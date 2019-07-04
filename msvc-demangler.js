@@ -67,7 +67,7 @@ function parse_template_name(data) {
         template_arguments.push(parse_type(data));
     data.index++;
     [data.names.active, data.types.active] = [names_prev_active, types_prev_active];
-    return Object.assign({}, name, { template_arguments });
+    return { ...name, template_arguments };
 }
 function remember_name(data, name) {
     data.names.stored[data.names.active].push(name);
@@ -231,7 +231,7 @@ function parse_special_name(data) {
     });
 }
 function parse_qualified_name(data) {
-    return Object.assign({}, parse_unqualified_name(data), { scope: parse_scope(data) });
+    return { ...parse_unqualified_name(data), scope: parse_scope(data) };
 }
 function parse_modifiers(data) {
     return parse(data, "type qualifier")({
@@ -239,11 +239,11 @@ function parse_modifiers(data) {
         'B': () => ({ cv: 'const' }),
         'C': () => ({ cv: 'volatile' }),
         'D': () => ({ cv: 'const volatile' }),
-        'E': () => (Object.assign({ ptr64: '__ptr64' }, parse_modifiers(data))),
-        'F': () => (Object.assign({ unaligned: '__unaligned' }, parse_modifiers(data))),
-        'G': () => (Object.assign({ refqual: '&' }, parse_modifiers(data))),
-        'H': () => (Object.assign({ refqual: '&&' }, parse_modifiers(data))),
-        'I': () => (Object.assign({ restrict: '__restrict' }, parse_modifiers(data))),
+        'E': () => ({ ptr64: '__ptr64', ...parse_modifiers(data) }),
+        'F': () => ({ unaligned: '__unaligned', ...parse_modifiers(data) }),
+        'G': () => ({ refqual: '&', ...parse_modifiers(data) }),
+        'H': () => ({ refqual: '&&', ...parse_modifiers(data) }),
+        'I': () => ({ restrict: '__restrict', ...parse_modifiers(data) }),
         'J': () => ({ format: 'huge', cv: 'const' }),
         'K': () => ({ format: 'huge', cv: 'volatile' }),
         'L': () => ({ format: 'huge', cv: 'const volatile' }),
@@ -276,7 +276,7 @@ function parse_modifiers(data) {
     });
 }
 function parse_modified_function_type(data) {
-    return Object.assign({}, parse_modifiers(data), parse_function_type(data));
+    return { ...parse_modifiers(data), ...parse_function_type(data) };
 }
 function parse_function_type(data) {
     let cc = parse(data, "calling convention")({
@@ -305,7 +305,7 @@ function parse_function_type(data) {
     let except = parse(data, "exception specification")({
         'Z': () => [],
     });
-    return Object.assign({ typekind: 'function' }, cc, { return_type, params, variadic, except });
+    return { typekind: 'function', ...cc, return_type, params, variadic, except };
 }
 function parse_array_type(data) {
     let dimension = parse_number(data);
@@ -317,14 +317,33 @@ function parse_full_type(data) {
     const modifiers = parse_modifiers(data);
     if (modifiers.member) {
         if (modifiers.function)
-            return Object.assign({}, modifiers, { class_name: parse_qualified_name(data) }, parse_modified_function_type(data));
-        return Object.assign({}, modifiers, { class_name: parse_qualified_name(data) }, parse_type(data));
-    }
-    else {
+            return { ...modifiers, class_name: parse_qualified_name(data), ...parse_modified_function_type(data) };
+        return { ...modifiers, class_name: parse_qualified_name(data), ...parse_type(data) };
+    } else {
         if (modifiers.function)
-            return Object.assign({}, modifiers, parse_function_type(data));
-        return Object.assign({}, modifiers, parse_type(data));
+            return { ...modifiers, ...parse_function_type(data) };
+        return { ...modifiers, ...parse_type(data) };
     }
+}
+function parse_type_or_template_argument(data) {
+    return parse(data, "type or template argument", '$')({
+        'M': () => ({ type: parse_type(data), ...parse_type_or_template_argument(data) }),
+        'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
+        '0': () => ({ typekind: 'template argument', argkind: 'integral', value: parse_number(data) }),
+        '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: parse_mangled(data) }),
+        '$': () => parse(data, "type or template argument", '$$')({
+            'A': () => parse_full_type(data),
+            'B': () => parse(data, "type", '$$B')({
+                'Y': () => parse_array_type(data)
+            }),
+            'C': () => ({ ...parse_modifiers(data), ...parse_type(data) }),
+            'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: parse_full_type(data) }),
+            'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: parse_full_type(data) }),
+            'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
+            'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
+            'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: parse_qualified_name(data) }),
+        })
+    });
 }
 function parse_type(data) {
     return parse(data, "type")({
@@ -362,7 +381,7 @@ function parse_type(data) {
                 '7': () => 'unsigned long',
             }), typename: parse_qualified_name(data)
         }),
-        'X': () => ({ typekind: 'builtin', typename: 'void' }),
+        'X': () => ({ typekind: 'basic', typename: 'void' }),
         'Y': () => parse_array_type(data),
         'Z': error,
         '0': () => data.types.stored[data.types.active][0],
@@ -393,7 +412,7 @@ function parse_type(data) {
             'N': () => ({ typekind: 'builtin', typename: 'bool' }),
             'O': todo,
             'P': error,
-            'Q': error,
+            'Q': () => ({ typekind: 'builtin', typename: 'char8_t' }),
             'R': error,
             'S': () => ({ typekind: 'builtin', typename: 'char16_t' }),
             'T': error,
@@ -418,23 +437,7 @@ function parse_type(data) {
             }),
             '$': todo
         }),
-        '$': () => parse(data, "type or template argument", '$')({
-            'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
-            '0': () => ({ typekind: 'template argument', argkind: 'integral', value: parse_number(data) }),
-            '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: parse_mangled(data) }),
-            '$': () => parse(data, "type or template argument", '$$')({
-                'A': () => parse_full_type(data),
-                'B': () => parse(data, "type", '$$B')({
-                    'Y': () => parse_array_type(data)
-                }),
-                'C': () => (Object.assign({}, parse_modifiers(data), parse_type(data))),
-                'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: parse_full_type(data) }),
-                'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: parse_full_type(data) }),
-                'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
-                'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
-                'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: parse_qualified_name(data) }),
-            })
-        })
+        '$': () => parse_type_or_template_argument(data),
     });
 }
 function parse_vtable_base(data) {
@@ -445,40 +448,40 @@ function parse_vtable_base(data) {
 }
 function parse_extra_info(data) {
     return parse(data, "entity info")({
-        'A': () => (Object.assign({ kind: 'function', access: 'private' }, parse_modified_function_type(data))),
-        'B': () => (Object.assign({ kind: 'function', access: 'private', far: 'far' }, parse_modified_function_type(data))),
-        'C': () => (Object.assign({ kind: 'function', access: 'private', specifier: 'static' }, parse_function_type(data))),
-        'D': () => (Object.assign({ kind: 'function', access: 'private', specifier: 'static', far: 'far' }, parse_function_type(data))),
-        'E': () => (Object.assign({ kind: 'function', access: 'private', specifier: 'virtual' }, parse_modified_function_type(data))),
-        'F': () => (Object.assign({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far' }, parse_modified_function_type(data))),
-        'G': () => (Object.assign({ kind: 'function', access: 'private', specifier: '__thunk' }, parse_modified_function_type(data))),
-        'H': () => (Object.assign({ kind: 'function', access: 'private', specifier: '__thunk', far: 'far' }, parse_modified_function_type(data))),
-        'I': () => (Object.assign({ kind: 'function', access: 'protected' }, parse_modified_function_type(data))),
-        'J': () => (Object.assign({ kind: 'function', access: 'protected', far: 'far' }, parse_modified_function_type(data))),
-        'K': () => (Object.assign({ kind: 'function', access: 'protected', specifier: 'static' }, parse_function_type(data))),
-        'L': () => (Object.assign({ kind: 'function', access: 'protected', specifier: 'static', far: 'far' }, parse_function_type(data))),
-        'M': () => (Object.assign({ kind: 'function', access: 'protected', specifier: 'virtual' }, parse_modified_function_type(data))),
-        'N': () => (Object.assign({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far' }, parse_modified_function_type(data))),
-        'O': () => (Object.assign({ kind: 'function', access: 'protected', specifier: '__thunk' }, parse_modified_function_type(data))),
-        'P': () => (Object.assign({ kind: 'function', access: 'protected', specifier: '__thunk', far: 'far' }, parse_modified_function_type(data))),
-        'Q': () => (Object.assign({ kind: 'function', access: 'public' }, parse_modified_function_type(data))),
-        'R': () => (Object.assign({ kind: 'function', access: 'public', far: 'far' }, parse_modified_function_type(data))),
-        'S': () => (Object.assign({ kind: 'function', access: 'public', specifier: 'static' }, parse_function_type(data))),
-        'T': () => (Object.assign({ kind: 'function', access: 'public', specifier: 'static', far: 'far' }, parse_function_type(data))),
-        'U': () => (Object.assign({ kind: 'function', access: 'public', specifier: 'virtual' }, parse_modified_function_type(data))),
-        'V': () => (Object.assign({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far' }, parse_modified_function_type(data))),
-        'W': () => (Object.assign({ kind: 'function', access: 'public', specifier: '__thunk' }, parse_modified_function_type(data))),
-        'X': () => (Object.assign({ kind: 'function', access: 'public', specifier: '__thunk', far: 'far' }, parse_modified_function_type(data))),
-        'Y': () => (Object.assign({ kind: 'function' }, parse_function_type(data))),
-        'Z': () => (Object.assign({ kind: 'function', far: 'far' }, parse_function_type(data))),
-        '0': () => (Object.assign({ kind: 'variable', access: 'private', specifier: 'static' }, parse_type(data), parse_modifiers(data))),
-        '1': () => (Object.assign({ kind: 'variable', access: 'protected', specifier: 'static' }, parse_type(data), parse_modifiers(data))),
-        '2': () => (Object.assign({ kind: 'variable', access: 'public', specifier: 'static' }, parse_type(data), parse_modifiers(data))),
-        '3': () => (Object.assign({ kind: 'variable' }, parse_type(data), parse_modifiers(data))),
-        '4': () => (Object.assign({ kind: 'variable', specifier: 'static' }, parse_type(data), parse_modifiers(data))),
+        'A': () => ({ kind: 'function', access: 'private', ...parse_modified_function_type(data) }),
+        'B': () => ({ kind: 'function', access: 'private', far: 'far', ...parse_modified_function_type(data) }),
+        'C': () => ({ kind: 'function', access: 'private', specifier: 'static', ...parse_function_type(data) }),
+        'D': () => ({ kind: 'function', access: 'private', specifier: 'static', far: 'far', ...parse_function_type(data) }),
+        'E': () => ({ kind: 'function', access: 'private', specifier: 'virtual', ...parse_modified_function_type(data) }),
+        'F': () => ({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far', ...parse_modified_function_type(data) }),
+        'G': () => ({ kind: 'function', access: 'private', specifier: '__thunk', ...parse_modified_function_type(data) }),
+        'H': () => ({ kind: 'function', access: 'private', specifier: '__thunk', far: 'far', ...parse_modified_function_type(data) }),
+        'I': () => ({ kind: 'function', access: 'protected', ...parse_modified_function_type(data) }),
+        'J': () => ({ kind: 'function', access: 'protected', far: 'far', ...parse_modified_function_type(data) }),
+        'K': () => ({ kind: 'function', access: 'protected', specifier: 'static', ...parse_function_type(data) }),
+        'L': () => ({ kind: 'function', access: 'protected', specifier: 'static', far: 'far', ...parse_function_type(data) }),
+        'M': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', ...parse_modified_function_type(data) }),
+        'N': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far', ...parse_modified_function_type(data) }),
+        'O': () => ({ kind: 'function', access: 'protected', specifier: '__thunk', ...parse_modified_function_type(data) }),
+        'P': () => ({ kind: 'function', access: 'protected', specifier: '__thunk', far: 'far', ...parse_modified_function_type(data) }),
+        'Q': () => ({ kind: 'function', access: 'public', ...parse_modified_function_type(data) }),
+        'R': () => ({ kind: 'function', access: 'public', far: 'far', ...parse_modified_function_type(data) }),
+        'S': () => ({ kind: 'function', access: 'public', specifier: 'static', ...parse_function_type(data) }),
+        'T': () => ({ kind: 'function', access: 'public', specifier: 'static', far: 'far', ...parse_function_type(data) }),
+        'U': () => ({ kind: 'function', access: 'public', specifier: 'virtual', ...parse_modified_function_type(data) }),
+        'V': () => ({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far', ...parse_modified_function_type(data) }),
+        'W': () => ({ kind: 'function', access: 'public', specifier: '__thunk', ...parse_modified_function_type(data) }),
+        'X': () => ({ kind: 'function', access: 'public', specifier: '__thunk', far: 'far', ...parse_modified_function_type(data) }),
+        'Y': () => ({ kind: 'function', ...parse_function_type(data) }),
+        'Z': () => ({ kind: 'function', far: 'far', ...parse_function_type(data) }),
+        '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
+        '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
+        '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
+        '3': () => ({ kind: 'variable', ...parse_type(data), ...parse_modifiers(data) }),
+        '4': () => ({ kind: 'variable', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
         '5': todo,
-        '6': () => (Object.assign({ kind: 'special' }, parse_modifiers(data), { base: parse_vtable_base(data) })),
-        '7': () => (Object.assign({ kind: 'special' }, parse_modifiers(data), { base: parse_vtable_base(data) })),
+        '6': () => ({ kind: 'special', ...parse_modifiers(data), base: parse_vtable_base(data) }),
+        '7': () => ({ kind: 'special', ...parse_modifiers(data), base: parse_vtable_base(data) }),
         '8': () => ({ kind: 'special' }),
         '9': () => ({ kind: 'function' }),
         '_': todo,
@@ -495,7 +498,7 @@ function parse_mangled_after_question_mark(data) {
     });
     if (name.namekind === 'string')
         return name;
-    return Object.assign({}, name, { scope: parse_scope(data) }, parse_extra_info(data));
+    return { ...name, scope: parse_scope(data), ...parse_extra_info(data) };
 }
 function parse_mangled(data) {
     return parse(data, "mangled name")({
@@ -605,7 +608,10 @@ function print_type(ast) {
         case 'template argument':
             switch (ast.argkind) {
                 case 'integral':
-                    return [ast.value.toString(), ''];
+                    if (ast.type)
+                        return ['(' + print_type(ast.type).join('') + ')' + ast.value.toString(), ''];
+                    else
+                        return [ast.value.toString(), ''];
                 case 'empty non-type':
                 case 'empty type':
                     return ['', ''];
@@ -614,7 +620,10 @@ function print_type(ast) {
                 case 'entity':
                     if (ast.entity.namekind === 'string')
                         return ["'string'", ''];
-                    return [print_qualified_name(ast.entity), ''];
+                    else if (ast.type)
+                        return ['(' + print_type(ast.type).join('') + ')' + print_qualified_name(ast.entity), ''];
+		    else
+                        return [print_qualified_name(ast.entity), ''];
             }
             return ast;
     }
