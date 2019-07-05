@@ -1,3 +1,5 @@
+module.exports = { demangle };
+
 function demangle_to_ast(s, idx = 0) {
     return parse_mangled({ input: s, index: idx, names: { stored: [[]], active: 0 }, types: { stored: [[]], active: 0 } });
 }
