@@ -38,13 +38,23 @@ function parse_number(data) {
         '?': () => -1,
         default: () => 1,
     });
-    if ('0' <= data.input[data.index] && data.input[data.index] <= '9') {
-        const value = +data.input[data.index] + 1;
-        data.index++;
-        return sign * value;
-    }
-    const numstring = parse_source_name(data);
-    return sign * +('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
+    const value = parse(data, "number")({
+        '0': () => 1,
+        '1': () => 2,
+        '2': () => 3,
+        '3': () => 4,
+        '4': () => 5,
+        '5': () => 6,
+        '6': () => 7,
+        '7': () => 8,
+        '8': () => 9,
+        '9': () => 10,
+        default: () => {
+            const numstring = parse_source_name(data);
+            return +('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
+        },
+    });
+    return sign * value;
 }
 function parse_string_literal_name(data) {
     const wide = parse(data, "string literal width")({
@@ -78,10 +88,25 @@ function remember_name(data, name) {
 function parse_parameter_list(data) {
     const params = [];
     while (data.input[data.index] !== '@' && data.input[data.index] !== 'Z') {
-        const type = parse_type(data);
+        const type = parse(data, 'parameter type')({
+            '0': () => data.types.stored[data.types.active][0],
+            '1': () => data.types.stored[data.types.active][1],
+            '2': () => data.types.stored[data.types.active][2],
+            '3': () => data.types.stored[data.types.active][3],
+            '4': () => data.types.stored[data.types.active][4],
+            '5': () => data.types.stored[data.types.active][5],
+            '6': () => data.types.stored[data.types.active][6],
+            '7': () => data.types.stored[data.types.active][7],
+            '8': () => data.types.stored[data.types.active][8],
+            '9': () => data.types.stored[data.types.active][9],
+            default: () => {
+                const type = parse_type(data);
+                if (type.typekind !== 'basic')
+                    data.types.stored[data.types.active].push(type);
+                return type;
+            }
+        });
         params.push(type);
-        if (type.typekind !== 'basic')
-            data.types.stored[data.types.active].push(type);
     }
     const variadic = parse(data, "end of function parameter list")({
         '@': () => undefined,
@@ -124,6 +149,20 @@ function parse_unqualified_name(data) {
     if (name.namekind === 'string')
         throw `error: mangled name '?_C' is not expected to appear here\nsource string: ${info(data)}`;
     return name;
+}
+function parse_name(data) {
+    return parse(data, "unqualified or mangled name")({
+        '?': () => parse(data, "unqualified or mangled name", '?')({
+            '$': () => parse_template_name(data),
+            default: () => {
+                const mangled_name = parse_mangled_after_question_mark(data);
+                return parse(data, "end of inner mangled name")({
+                    '@': () => mangled_name
+                });
+            }
+        }),
+        default: () => parse_unqualified_name(data)
+    });
 }
 function parse_special_name(data) {
     return parse(data, "unqualified name")({
@@ -219,8 +258,8 @@ function parse_special_name(data) {
                 'B': () => ({ namekind: 'special', spelling: '__man_vec_dtor' }),
                 'C': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor' }),
                 'D': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor_vb' }),
-                'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', namefor: parse_unqualified_name(data) }),
-                'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', namefor: parse_unqualified_name(data) }),
+                'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', namefor: parse_name(data) }),
+                'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', namefor: parse_name(data) }),
                 'G': () => ({ namekind: 'special', spelling: '__vec_copy_ctor' }),
                 'H': () => ({ namekind: 'special', spelling: '__vec_copy_ctor_vb' }),
                 'I': () => ({ namekind: 'special', spelling: '__man_vec_copy_ctor' }),
@@ -304,8 +343,11 @@ function parse_function_type(data) {
         'X': () => ({ params: [] }),
         default: () => parse_parameter_list(data),
     });
-    let except = parse(data, "exception specification")({
-        'Z': () => [],
+    let except = parse(data, "noexcept specification")({
+        'Z': () => undefined,
+        '_': () => parse(data, "noexcept specification", '_')({
+            'E': () => 'noexcept',
+        })
     });
     return { typekind: 'function', ...cc, return_type, params, variadic, except };
 }
@@ -344,6 +386,7 @@ function parse_type_or_template_argument(data) {
             'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
             'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
             'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: parse_qualified_name(data) }),
+            'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
         })
     });
 }
@@ -386,16 +429,6 @@ function parse_type(data) {
         'X': () => ({ typekind: 'basic', typename: 'void' }),
         'Y': () => parse_array_type(data),
         'Z': error,
-        '0': () => data.types.stored[data.types.active][0],
-        '1': () => data.types.stored[data.types.active][1],
-        '2': () => data.types.stored[data.types.active][2],
-        '3': () => data.types.stored[data.types.active][3],
-        '4': () => data.types.stored[data.types.active][4],
-        '5': () => data.types.stored[data.types.active][5],
-        '6': () => data.types.stored[data.types.active][6],
-        '7': () => data.types.stored[data.types.active][7],
-        '8': () => data.types.stored[data.types.active][8],
-        '9': () => data.types.stored[data.types.active][9],
         '?': () => parse_full_type(data),
         '_': () => parse(data, "type", '_')({
             'A': error,
@@ -555,7 +588,7 @@ function print_unqualified_name(ast) {
             if (conversion_result_type && specialname === 'conversion' && !ast.template_arguments)
                 return 'operator ' + print_type(conversion_result_type).join('');
             if (ast.namefor)
-                return `'${specialname} for '${print_unqualified_name(ast.namefor)}''`;
+                return `'${specialname} for '${print_qualified_name(ast.namefor)}''`;
             const base = ast.base;
             if (base)
                 return `'${specialname} for '${print_qualified_name(base)}''`;
@@ -564,9 +597,11 @@ function print_unqualified_name(ast) {
 }
 function print_qualified_name(ast) {
     const scope = ast.scope.map((scope) => {
-        if (typeof scope === 'number')
+        if (typeof scope === 'number') {
+            if (isNaN(scope))
+                return "'anonymous namespace'";
             return `'${scope}'`;
-        if (scope.namekind === 'string' || scope.kind)
+        } else if (scope.namekind === 'string' || scope.kind)
             return print_ast(scope);
         return print_unqualified_name(scope);
     });
@@ -602,11 +637,11 @@ function print_type(ast) {
             return [elem_left, boundstr + elem_right];
         case 'function':
             const [ret_left = '', ret_right = ''] = ast.return_type ? print_type(ast.return_type) : [];
-            const parameter_list = [...ast.params.map(t => print_type(t).join('')), ast.variadic];
-            const parameters_and_qualifiers = [`(${filter_join(', ')(parameter_list)})`, ast.cv, ast.refqual];
+            const param_list = [...ast.params.map(t => print_type(t).join('')), ast.variadic];
+            const params_and_quals = [`(${filter_join(', ')(param_list)})`, ast.cv, ast.refqual, ast.except];
             if (ret_right)
-                return ['auto', filter_join(' ')(parameters_and_qualifiers) + ' -> ' + ret_left + ret_right];
-            return [ret_left, filter_join(' ')(parameters_and_qualifiers) + ret_right];
+                return ['auto', filter_join(' ')(params_and_quals) + ' -> ' + ret_left + ret_right];
+            return [ret_left, filter_join(' ')(params_and_quals) + ret_right];
         case 'template argument':
             switch (ast.argkind) {
                 case 'integral':
@@ -616,6 +651,7 @@ function print_type(ast) {
                         return [ast.value.toString(), ''];
                 case 'empty non-type':
                 case 'empty type':
+                case 'pack separator':
                     return ['', ''];
                 case 'alias':
                     return [print_qualified_name(ast.typename), ''];
@@ -624,7 +660,7 @@ function print_type(ast) {
                         return ["'string'", ''];
                     else if (ast.type)
                         return ['(' + print_type(ast.type).join('') + ')' + print_qualified_name(ast.entity), ''];
-		    else
+                    else
                         return [print_qualified_name(ast.entity), ''];
             }
             return ast;
