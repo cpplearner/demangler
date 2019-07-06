@@ -3,6 +3,27 @@ let { demangle } = require('./msvc-demangler');
 [
     ["?f@@YADXZ", "char f()"],
     ["?f@@YADH@Z", "char f(int)"],
+    ["??_DY@@QAEXXZ", "void Y::'vbase destructor'()"],
+    ["??_EY@@QAEPAXI@Z", "void * Y::'vector deleting destructor'(unsigned int)"],
+    ["??_EX@@UAAPAXI@Z", "void * X::'vector deleting destructor'(unsigned int)"],
+    ["??_EX@@UEAAPEAXI@Z", "void * X::'vector deleting destructor'(unsigned int)"],
+    ["??_FY@@QAEXXZ", "void Y::'default constructor closure'()"],
+    ["??_GY@@QAEPAXI@Z", "void * Y::'scalar deleting destructor'(unsigned int)"],
+    ["??_H@YGXPAXIIP6EPAX0@Z@Z", "void 'vector constructor iterator'(void *, unsigned int, unsigned int, void * (*)(void *))"],
+    ["??_I@YGXPAXIIP6EX0@Z@Z", "void 'vector destructor iterator'(void *, unsigned int, unsigned int, void (*)(void *))"],
+    ["??_J@YGXPAXIIP6EPAX0@Z@Z", "void 'vector vbase constructor iterator'(void *, unsigned int, unsigned int, void * (*)(void *))"],
+    ["??_L@YGXPAXIIP6EX0@Z1@Z", "void 'eh vector constructor iterator'(void *, unsigned int, unsigned int, void (*)(void *), void (*)(void *))"],
+    ["??_M@YGXPAXIIP6EX0@Z@Z", "void 'eh vector destructor iterator'(void *, unsigned int, unsigned int, void (*)(void *))"],
+    ["??_N@YGXPAXIIP6EX0@Z1@Z", "void 'eh vector vbase constructor iterator'(void *, unsigned int, unsigned int, void (*)(void *), void (*)(void *))"],
+    ["??_OY@@QAEXAAU0@@Z", "void Y::'copy constructor closure'(Y &)"],
+    ["??__C@YGXPAX0IIP6EX00@ZP6EX0@Z@Z", "void 'eh vector copy constructor iterator'(void *, void *, unsigned int, unsigned int, void (*)(void *, void *), void (*)(void *))"],
+    ["??__D@YGXPAX0IIP6EX00@ZP6EX0@Z@Z", "void 'eh vector vbase copy constructor iterator'(void *, void *, unsigned int, unsigned int, void (*)(void *, void *), void (*)(void *))"],
+    ["??__G@YGXPAX0IIP6EPAX00@Z@Z", "void 'vector copy constructor iterator'(void *, void *, unsigned int, unsigned int, void * (*)(void *, void *))"],
+    ["??__H@YGXPAX0IIP6EPAX00@Z@Z", "void 'vector vbase copy constructor iterator'(void *, void *, unsigned int, unsigned int, void * (*)(void *, void *))"],
+    ["??3@YAXPEAX_K@Z", "void operator delete(void *, unsigned long long)"],
+    ["??_U@YAPEAX_K@Z", "void * operator new[](unsigned long long)"],
+    ["??_V@YAXPEAX@Z", "void operator delete[](void *)"],
+    ["??_V@YAXPEAX_K@Z", "void operator delete[](void *, unsigned long long)"],
     ["??1publicA@@UEAA@XZ", "publicA::~publicA()"],
     ["??0publicA@@QEAA@XZ", "publicA::publicA()"],
     ["??_GpublicA@@UEAAPEAXI@Z", "void * publicA::'scalar deleting destructor'(unsigned int)"],
@@ -18,11 +39,16 @@ let { demangle } = require('./msvc-demangler');
 ].forEach(([mangled, expected]) => {
     try {
         let result = demangle(mangled);
-        console.assert(result === expected,
-            'Demangling "%s" produces unexpected result.\n\tExpected: "%s"\n\tActual: "%s"\n',
-            mangled, expected, result);
+        if (result !== expected) {
+            process.exitCode = 1;
+            console.error(`Fail: Demangling "${mangled}" produces unexpected result.`);
+            console.error(`\tExpect: "${expected}"`);
+            console.error(`\tActual: "${result}"`);
+        }
     } catch (e) {
-        console.log('Exception thrown when demangling "%s".\n\tExpected: "%s"\n\tMessage: """\n%s\n"""\n',
-        mangled, expected, e);
+        process.exitCode = 1;
+        console.error(`Fail: Exception thrown when demangling "${mangled}".`);
+        console.error(`\tExpected: "${expected}"`);
+        console.error(`\tMessage: """\n${e}\n"""`);
     }
 });
