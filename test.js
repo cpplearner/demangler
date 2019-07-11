@@ -28,7 +28,7 @@ let { demangle } = require('./msvc-demangler');
     ["??0publicA@@QEAA@XZ", "publicA::publicA()"],
     ["??_GpublicA@@UEAAPEAXI@Z", "void * publicA::'scalar deleting destructor'(unsigned int)"],
     ["??_DpublicA@@QEAAXXZ", "void publicA::'vbase destructor'()"],
-    ["??_9publicA@@$B7AA", "publicA::`vcall'{8}'"],
+    ["??_9publicA@@$B7AA", "publicA::'vcall'"],
     ["?f@@YAP8publicA@@EAAXXZXZ", "auto f() -> void (publicA::*)()"],
     ["??1protectedA@@MEAA@XZ", "protectedA::~protectedA()"],
     ["??_GprotectedA@@MEAAPEAXI@Z", "void * protectedA::'scalar deleting destructor'(unsigned int)"],
@@ -36,6 +36,10 @@ let { demangle } = require('./msvc-demangler');
     ["??1privateA@@EEAA@XZ", "privateA::~privateA()"],
     ["??_GprivateA@@EEAAPEAXI@Z", "void * privateA::'scalar deleting destructor'(unsigned int)"],
     ["??_DprivateA@@AEAAXXZ", "void privateA::'vbase destructor'()"],
+    ["??_EB@@$4PPPPPPPM@A@AEPAXI@Z", "void * B::'vector deleting destructor'(unsigned int)"],
+    ["?f@B@@$4PPPPPPPM@A@AEXXZ", "void B::f()"],
+    ["??_EC@@$0PPPPPPPM@A@AEPAXI@Z", "void * C::'vector deleting destructor'(unsigned int)"],
+    ["?f@B@@$R477PPPPPPPM@7AEXXZ", "void B::f()"],
 ].forEach(([mangled, expected]) => {
     try {
         let result = demangle(mangled);

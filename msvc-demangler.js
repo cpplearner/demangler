@@ -150,7 +150,7 @@ function parse_unqualified_name(data) {
         throw `error: mangled name '?_C' is not expected to appear here\nsource string: ${info(data)}`;
     return name;
 }
-function parse_name(data) {
+function parse_unqualified_name_or_mangled(data) {
     return parse(data, "unqualified or mangled name")({
         '?': () => parse(data, "unqualified or mangled name", '?')({
             '$': () => parse_template_name(data),
@@ -258,8 +258,8 @@ function parse_special_name(data) {
                 'B': () => ({ namekind: 'special', spelling: '__man_vec_dtor' }),
                 'C': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor' }),
                 'D': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor_vb' }),
-                'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', namefor: parse_name(data) }),
-                'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', namefor: parse_name(data) }),
+                'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', namefor: parse_unqualified_name_or_mangled(data) }),
+                'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', namefor: parse_unqualified_name_or_mangled(data) }),
                 'G': () => ({ namekind: 'special', spelling: '__vec_copy_ctor' }),
                 'H': () => ({ namekind: 'special', spelling: '__vec_copy_ctor_vb' }),
                 'I': () => ({ namekind: 'special', spelling: '__man_vec_copy_ctor' }),
@@ -316,11 +316,11 @@ function parse_modifiers(data) {
         '$': todo,
     });
 }
-function parse_modified_function_type(data) {
+function parse_member_function_type(data) {
     return { ...parse_modifiers(data), ...parse_function_type(data) };
 }
-function parse_function_type(data) {
-    let cc = parse(data, "calling convention")({
+function parse_calling_convention(data) {
+    return parse(data, "calling convention")({
         'A': () => ({ calling_convention: '__cdecl' }),
         'B': () => ({ calling_convention: '__cdecl', export: '__export' }),
         'C': () => ({ calling_convention: '__pascal' }),
@@ -335,6 +335,9 @@ function parse_function_type(data) {
         'Q': () => ({ calling_convention: '__vectorcall' }),
         'W': () => ({ calling_convention: '__regcall' }),
     });
+}
+function parse_function_type(data) {
+    let cc = parse_calling_convention(data);
     let return_type = parse(data, "function return type")({
         '@': () => undefined,
         default: () => parse_type(data),
@@ -361,7 +364,7 @@ function parse_full_type(data) {
     const modifiers = parse_modifiers(data);
     if (modifiers.member) {
         if (modifiers.function)
-            return { ...modifiers, class_name: parse_qualified_name(data), ...parse_modified_function_type(data) };
+            return { ...modifiers, class_name: parse_qualified_name(data), ...parse_member_function_type(data) };
         return { ...modifiers, class_name: parse_qualified_name(data), ...parse_type(data) };
     } else {
         if (modifiers.function)
@@ -369,16 +372,17 @@ function parse_full_type(data) {
         return { ...modifiers, ...parse_type(data) };
     }
 }
-function parse_type_or_template_argument(data) {
+function parse_template_argument_or_extended_type(data) {
     return parse(data, "type or template argument", '$')({
-        'M': () => ({ type: parse_type(data), ...parse_type_or_template_argument(data) }),
+        'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: parse_mangled(data) }),
+        'M': () => ({ type: parse_type(data), ...parse_template_argument_or_extended_type(data) }),
         'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
         '0': () => ({ typekind: 'template argument', argkind: 'integral', value: parse_number(data) }),
         '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: parse_mangled(data) }),
         '$': () => parse(data, "type or template argument", '$$')({
             'A': () => parse_full_type(data),
             'B': () => parse(data, "type", '$$B')({
-                'Y': () => parse_array_type(data)
+                'Y': () => parse_array_type(data),
             }),
             'C': () => ({ ...parse_modifiers(data), ...parse_type(data) }),
             'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: parse_full_type(data) }),
@@ -472,7 +476,7 @@ function parse_type(data) {
             }),
             '$': todo
         }),
-        '$': () => parse_type_or_template_argument(data),
+        '$': () => parse_template_argument_or_extended_type(data),
     });
 }
 function parse_vtable_base(data) {
@@ -481,32 +485,48 @@ function parse_vtable_base(data) {
         default: () => parse_qualified_name(data),
     });
 }
+function parse_vcall_thunk_info(data) {
+    return parse(data, "vcall thunk info")({
+        'A': () => ({}),
+        default: todo,
+    });
+}
+function parse_vtordisp_kind(data) {
+    return parse(data, "vtordisp kind")({
+        '0': () => ({ access: 'private' }),
+        '1': () => ({ access: 'private', far: 'far' }),
+        '2': () => ({ access: 'protected' }),
+        '3': () => ({ access: 'protected', far: 'far' }),
+        '4': () => ({ access: 'public' }),
+        '5': () => ({ access: 'public', far: 'far' }),
+    });
+}
 function parse_extra_info(data) {
     return parse(data, "entity info")({
-        'A': () => ({ kind: 'function', access: 'private', ...parse_modified_function_type(data) }),
-        'B': () => ({ kind: 'function', access: 'private', far: 'far', ...parse_modified_function_type(data) }),
+        'A': () => ({ kind: 'function', access: 'private', ...parse_member_function_type(data) }),
+        'B': () => ({ kind: 'function', access: 'private', far: 'far', ...parse_member_function_type(data) }),
         'C': () => ({ kind: 'function', access: 'private', specifier: 'static', ...parse_function_type(data) }),
         'D': () => ({ kind: 'function', access: 'private', specifier: 'static', far: 'far', ...parse_function_type(data) }),
-        'E': () => ({ kind: 'function', access: 'private', specifier: 'virtual', ...parse_modified_function_type(data) }),
-        'F': () => ({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far', ...parse_modified_function_type(data) }),
-        'G': () => ({ kind: 'function', access: 'private', specifier: '__thunk', ...parse_modified_function_type(data) }),
-        'H': () => ({ kind: 'function', access: 'private', specifier: '__thunk', far: 'far', ...parse_modified_function_type(data) }),
-        'I': () => ({ kind: 'function', access: 'protected', ...parse_modified_function_type(data) }),
-        'J': () => ({ kind: 'function', access: 'protected', far: 'far', ...parse_modified_function_type(data) }),
+        'E': () => ({ kind: 'function', access: 'private', specifier: 'virtual', ...parse_member_function_type(data) }),
+        'F': () => ({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far', ...parse_member_function_type(data) }),
+        'G': () => ({ kind: 'function', access: 'private', adjustment: parse_number(data), ...parse_member_function_type(data) }),
+        'H': () => ({ kind: 'function', access: 'private', far: 'far', adjustment: parse_number(data), ...parse_member_function_type(data) }),
+        'I': () => ({ kind: 'function', access: 'protected', ...parse_member_function_type(data) }),
+        'J': () => ({ kind: 'function', access: 'protected', far: 'far', ...parse_member_function_type(data) }),
         'K': () => ({ kind: 'function', access: 'protected', specifier: 'static', ...parse_function_type(data) }),
         'L': () => ({ kind: 'function', access: 'protected', specifier: 'static', far: 'far', ...parse_function_type(data) }),
-        'M': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', ...parse_modified_function_type(data) }),
-        'N': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far', ...parse_modified_function_type(data) }),
-        'O': () => ({ kind: 'function', access: 'protected', specifier: '__thunk', ...parse_modified_function_type(data) }),
-        'P': () => ({ kind: 'function', access: 'protected', specifier: '__thunk', far: 'far', ...parse_modified_function_type(data) }),
-        'Q': () => ({ kind: 'function', access: 'public', ...parse_modified_function_type(data) }),
-        'R': () => ({ kind: 'function', access: 'public', far: 'far', ...parse_modified_function_type(data) }),
+        'M': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', ...parse_member_function_type(data) }),
+        'N': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far', ...parse_member_function_type(data) }),
+        'O': () => ({ kind: 'function', access: 'protected', adjustment: parse_number(data), ...parse_member_function_type(data) }),
+        'P': () => ({ kind: 'function', access: 'protected', far: 'far', adjustment: parse_number(data), ...parse_member_function_type(data) }),
+        'Q': () => ({ kind: 'function', access: 'public', ...parse_member_function_type(data) }),
+        'R': () => ({ kind: 'function', access: 'public', far: 'far', ...parse_member_function_type(data) }),
         'S': () => ({ kind: 'function', access: 'public', specifier: 'static', ...parse_function_type(data) }),
         'T': () => ({ kind: 'function', access: 'public', specifier: 'static', far: 'far', ...parse_function_type(data) }),
-        'U': () => ({ kind: 'function', access: 'public', specifier: 'virtual', ...parse_modified_function_type(data) }),
-        'V': () => ({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far', ...parse_modified_function_type(data) }),
-        'W': () => ({ kind: 'function', access: 'public', specifier: '__thunk', ...parse_modified_function_type(data) }),
-        'X': () => ({ kind: 'function', access: 'public', specifier: '__thunk', far: 'far', ...parse_modified_function_type(data) }),
+        'U': () => ({ kind: 'function', access: 'public', specifier: 'virtual', ...parse_member_function_type(data) }),
+        'V': () => ({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far', ...parse_member_function_type(data) }),
+        'W': () => ({ kind: 'function', access: 'public', adjustment: parse_number(data), ...parse_member_function_type(data) }),
+        'X': () => ({ kind: 'function', access: 'public', far: 'far', adjustment: parse_number(data), ...parse_member_function_type(data) }),
         'Y': () => ({ kind: 'function', ...parse_function_type(data) }),
         'Z': () => ({ kind: 'function', far: 'far', ...parse_function_type(data) }),
         '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
@@ -520,7 +540,17 @@ function parse_extra_info(data) {
         '8': () => ({ kind: 'special' }),
         '9': () => ({ kind: 'function' }),
         '_': todo,
-        '$': todo,
+        '$': () => parse(data, "entity info", '$')({
+            'B': () => ({ kind: 'vcall', callindex: parse_number(data), ...parse_vcall_thunk_info(data), ...parse_calling_convention(data) }),
+            'R': () => ({ kind: 'function', ...parse_vtordisp_kind(data),
+                vbptrdisp: parse_number(data), vbindex: parse_number(data), vtordisp: parse_number(data), adjustment: parse_number(data),
+                ...parse_member_function_type(data),
+            }),
+            default: () => ({ kind: 'function', ...parse_vtordisp_kind(data),
+                vtordisp: parse_number(data), adjustment: parse_number(data),
+                ...parse_member_function_type(data)
+            }),
+        }),
     });
 }
 function parse_mangled_after_question_mark(data) {
@@ -659,9 +689,9 @@ function print_type(ast) {
                     if (ast.entity.namekind === 'string')
                         return ["'string'", ''];
                     else if (ast.type)
-                        return ['(' + print_type(ast.type).join('') + ')' + print_qualified_name(ast.entity), ''];
+                        return [`(${print_type(ast.type).join('')})${ast.argref ? '' : '&'}${print_qualified_name(ast.entity)}`, ''];
                     else
-                        return [print_qualified_name(ast.entity), ''];
+                        return [(ast.argref ? '' : '&') + print_qualified_name(ast.entity), ''];
             }
             return ast;
     }
