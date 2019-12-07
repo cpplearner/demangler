@@ -1,575 +1,581 @@
-module.exports = { demangle };
-
-function demangle_to_ast(s, idx = 0) {
-    return parse_mangled({ input: s, index: idx, names: { stored: [[]], active: 0 }, types: { stored: [[]], active: 0 } });
-}
-function info(data) {
-    return `${data.input.slice(0, data.index)} | ${data.input[data.index]} | ${data.input.slice(data.index + 1)}`;
-}
 let error = () => { throw "error: cannot demangle"; };
 let todo = () => { throw "sorry: unimplemented demangling"; };
-function parse(data, context, prefix = '') {
-    return (map) => {
-        let c = data.input[data.index];
-        function call(f) {
-            if (data.index > data.input.length)
-                throw `error: unexpected end of string when demangling ${context}\nsource string: ${info(data)}`;
-            else if (f === error)
-                throw `error: cannot demangle ${context} that starts with '${prefix}${c}'\nsource string: ${info(data)}`;
-            else if (f === todo)
-                throw `sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${info(data)}`;
-            else
-                return f();
-        }
-        if (map[c]) {
-            data.index++;
-            return call(map[c]);
-        }
-        return call(map.default || error);
-    };
-}
-function parse_source_name(data) {
-    const spelling = data.input.slice(data.index, data.input.indexOf('@', data.index));
-    data.index += spelling.length + 1;
-    return spelling;
-}
-function parse_number(data) {
-    const sign = parse(data, "number")({
-        '?': () => -1,
-        default: () => 1,
-    });
-    const value = parse(data, "number")({
-        '0': () => 1,
-        '1': () => 2,
-        '2': () => 3,
-        '3': () => 4,
-        '4': () => 5,
-        '5': () => 6,
-        '6': () => 7,
-        '7': () => 8,
-        '8': () => 9,
-        '9': () => 10,
-        default: () => {
-            const numstring = parse_source_name(data);
-            return +('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
-        },
-    });
-    return sign * value;
-}
-function parse_string_literal_name(data) {
-    const wide = parse(data, "string literal width")({
-        '0': () => undefined,
-        '1': () => 'wide',
-    });
-    let [length, crc, str] = [parse_number(data), parse_source_name(data), parse_source_name(data)];
-    const [ord_diff, hex] = [(s, t) => s.charCodeAt(0) - t.charCodeAt(0), (i) => i.toString(16)];
-    str = str.replace(/\?[a-z]/g, (m) => `\\x${hex(ord_diff(m[1], 'a') + 0xE1)}`);
-    str = str.replace(/\?[A-Z]/g, (m) => `\\x${hex(ord_diff(m[1], 'A') + 0xC1)}`);
-    str = str.replace(/\?[0-9]/g, (m) => ",/\\:. \n\t'-"[ord_diff(m[1], '0')]);
-    str = str.replace(/\?\$(..)/g, (m, p) => `\\x${p.replace(/./g, (s) => hex(ord_diff(s, 'A')))}`);
-    return { namekind: 'string', wide, length, crc, content: str };
-}
-function parse_template_name(data) {
-    const [names_prev_active, types_prev_active] = [data.names.active, data.types.active];
-    [data.names.active, data.types.active] = [data.names.stored.length, data.types.stored.length];
-    [data.names.stored[data.names.active], data.types.stored[data.types.active]] = [[], []];
-    const name = parse_unqualified_name(data);
-    const template_arguments = [];
-    while (data.input[data.index] !== '@')
-        template_arguments.push(parse_type(data));
-    data.index++;
-    [data.names.active, data.types.active] = [names_prev_active, types_prev_active];
-    return { ...name, template_arguments };
-}
-function remember_name(data, name) {
-    data.names.stored[data.names.active].push(name);
-    return name;
-}
-function parse_parameter_list(data) {
-    const params = [];
-    while (data.input[data.index] !== '@' && data.input[data.index] !== 'Z') {
-        const type = parse(data, 'parameter type')({
-            '0': () => data.types.stored[data.types.active][0],
-            '1': () => data.types.stored[data.types.active][1],
-            '2': () => data.types.stored[data.types.active][2],
-            '3': () => data.types.stored[data.types.active][3],
-            '4': () => data.types.stored[data.types.active][4],
-            '5': () => data.types.stored[data.types.active][5],
-            '6': () => data.types.stored[data.types.active][6],
-            '7': () => data.types.stored[data.types.active][7],
-            '8': () => data.types.stored[data.types.active][8],
-            '9': () => data.types.stored[data.types.active][9],
-            default: () => {
-                const type = parse_type(data);
-                if (type.typekind !== 'basic')
-                    data.types.stored[data.types.active].push(type);
-                return type;
+class Demangler {
+    constructor(input, index = 0) {
+        this.input = input;
+        this.index = index;
+        this.names = { stored: [[]], active: 0 };
+        this.types = { stored: [[]], active: 0 };
+    }
+    dump() {
+        return `${this.input.slice(0, this.index)} | ${this.input[this.index]} | ${this.input.slice(this.index + 1)}`;
+    }
+    parse(context, prefix = '') {
+        return (map) => {
+            let c = this.input[this.index];
+            function call(f) {
+                if (this.index > this.input.length)
+                    throw `error: unexpected end of string when demangling ${context}\nsource string: ${this.dump()}`;
+                else if (f === error)
+                    throw `error: cannot demangle ${context} that starts with '${prefix}${c}'\nsource string: ${this.dump()}`;
+                else if (f === todo)
+                    throw `sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${this.dump()}`;
+                else
+                    return f();
             }
+            if (map[c]) {
+                this.index++;
+                return call(map[c]);
+            }
+            return call(map.default || error);
+        };
+    }
+    parse_source_name() {
+        const spelling = this.input.slice(this.index, this.input.indexOf('@', this.index));
+        this.index += spelling.length + 1;
+        return spelling;
+    }
+    parse_number() {
+        const sign = this.parse("number")({
+            '?': () => -1,
+            default: () => 1,
         });
-        params.push(type);
-    }
-    const variadic = parse(data, "end of function parameter list")({
-        '@': () => undefined,
-        'Z': () => '...',
-    });
-    return { params, variadic };
-}
-function parse_scope(data) {
-    const scopes = [];
-    while (data.input[data.index] !== '@')
-        scopes.push(parse(data, "scope")({
-            '?': () => parse(data, "scope", '?')({
-                '$': () => remember_name(data, parse_template_name(data)),
-                '?': () => parse_mangled_after_question_mark(data),
-                default: () => parse_number(data),
-            }),
-            default: () => parse_unqualified_name(data),
-        }));
-    data.index++;
-    return scopes.reverse();
-}
-function parse_unqualified_name(data) {
-    const name = parse(data, "unqualified name")({
-        '?': () => parse(data, "unqualified name")({
-            '$': () => remember_name(data, parse_template_name(data)),
-            default: () => parse_special_name(data),
-        }),
-        '0': () => data.names.stored[data.names.active][0],
-        '1': () => data.names.stored[data.names.active][1],
-        '2': () => data.names.stored[data.names.active][2],
-        '3': () => data.names.stored[data.names.active][3],
-        '4': () => data.names.stored[data.names.active][4],
-        '5': () => data.names.stored[data.names.active][5],
-        '6': () => data.names.stored[data.names.active][6],
-        '7': () => data.names.stored[data.names.active][7],
-        '8': () => data.names.stored[data.names.active][8],
-        '9': () => data.names.stored[data.names.active][9],
-        default: () => remember_name(data, { namekind: 'identifier', spelling: parse_source_name(data) }),
-    });
-    if (name.namekind === 'string')
-        throw `error: mangled name '?_C' is not expected to appear here\nsource string: ${info(data)}`;
-    return name;
-}
-function parse_unqualified_name_or_mangled(data) {
-    return parse(data, "unqualified or mangled name")({
-        '?': () => parse(data, "unqualified or mangled name", '?')({
-            '$': () => parse_template_name(data),
+        const value = this.parse("number")({
+            '0': () => 1,
+            '1': () => 2,
+            '2': () => 3,
+            '3': () => 4,
+            '4': () => 5,
+            '5': () => 6,
+            '6': () => 7,
+            '7': () => 8,
+            '8': () => 9,
+            '9': () => 10,
             default: () => {
-                const mangled_name = parse_mangled_after_question_mark(data);
-                return parse(data, "end of inner mangled name")({
-                    '@': () => mangled_name
-                });
-            }
-        }),
-        default: () => parse_unqualified_name(data)
-    });
-}
-function parse_special_name(data) {
-    return parse(data, "unqualified name")({
-        'A': () => ({ namekind: 'operator', spelling: 'operator[]' }),
-        'B': () => ({ namekind: 'special', specialname: 'conversion' }),
-        'C': () => ({ namekind: 'operator', spelling: 'operator->' }),
-        'D': () => ({ namekind: 'operator', spelling: 'operator*' }),
-        'E': () => ({ namekind: 'operator', spelling: 'operator++' }),
-        'F': () => ({ namekind: 'operator', spelling: 'operator--' }),
-        'G': () => ({ namekind: 'operator', spelling: 'operator-' }),
-        'H': () => ({ namekind: 'operator', spelling: 'operator+' }),
-        'I': () => ({ namekind: 'operator', spelling: 'operator&' }),
-        'J': () => ({ namekind: 'operator', spelling: 'operator->*' }),
-        'K': () => ({ namekind: 'operator', spelling: 'operator/' }),
-        'L': () => ({ namekind: 'operator', spelling: 'operator%' }),
-        'M': () => ({ namekind: 'operator', spelling: 'operator< ' }),
-        'N': () => ({ namekind: 'operator', spelling: 'operator<=' }),
-        'O': () => ({ namekind: 'operator', spelling: 'operator> ' }),
-        'P': () => ({ namekind: 'operator', spelling: 'operator>=' }),
-        'Q': () => ({ namekind: 'operator', spelling: 'operator,' }),
-        'R': () => ({ namekind: 'operator', spelling: 'operator()' }),
-        'S': () => ({ namekind: 'operator', spelling: 'operator~' }),
-        'T': () => ({ namekind: 'operator', spelling: 'operator^' }),
-        'U': () => ({ namekind: 'operator', spelling: 'operator|' }),
-        'V': () => ({ namekind: 'operator', spelling: 'operator&&' }),
-        'W': () => ({ namekind: 'operator', spelling: 'operator||' }),
-        'X': () => ({ namekind: 'operator', spelling: 'operator*=' }),
-        'Y': () => ({ namekind: 'operator', spelling: 'operator+=' }),
-        'Z': () => ({ namekind: 'operator', spelling: 'operator-=' }),
-        '0': () => ({ namekind: 'special', specialname: 'constructor' }),
-        '1': () => ({ namekind: 'special', specialname: 'destructor' }),
-        '2': () => ({ namekind: 'operator', spelling: 'operator new' }),
-        '3': () => ({ namekind: 'operator', spelling: 'operator delete' }),
-        '4': () => ({ namekind: 'operator', spelling: 'operator=' }),
-        '5': () => ({ namekind: 'operator', spelling: 'operator>>' }),
-        '6': () => ({ namekind: 'operator', spelling: 'operator<<' }),
-        '7': () => ({ namekind: 'operator', spelling: 'operator!' }),
-        '8': () => ({ namekind: 'operator', spelling: 'operator==' }),
-        '9': () => ({ namekind: 'operator', spelling: 'operator!=' }),
-        '_': () => parse(data, "unqualified name", '?_')({
-            'A': () => ({ namekind: 'special', specialname: 'typeof' }),
-            'B': () => ({ namekind: 'special', specialname: 'local static guard' }),
-            'C': () => parse(data, "string literal", '?_C')({
-                '@': () => parse(data, "string literal", '?_C@')({
-                    '_': () => parse_string_literal_name(data)
-                })
-            }),
-            'D': () => ({ namekind: 'special', spelling: '__vbaseDtor' }),
-            'E': () => ({ namekind: 'special', spelling: '__vecDelDtor' }),
-            'F': () => ({ namekind: 'special', spelling: '__dflt_ctor_closure' }),
-            'G': () => ({ namekind: 'special', spelling: '__delDtor' }),
-            'H': () => ({ namekind: 'special', spelling: '__vec_ctor' }),
-            'I': () => ({ namekind: 'special', spelling: '__vec_dtor' }),
-            'J': () => ({ namekind: 'special', spelling: '__vec_ctor_vb' }),
-            'K': () => ({ namekind: 'special', specialname: 'virtual displacement map' }),
-            'L': () => ({ namekind: 'special', spelling: '__ehvec_ctor' }),
-            'M': () => ({ namekind: 'special', spelling: '__ehvec_dtor' }),
-            'N': () => ({ namekind: 'special', spelling: '__ehvec_ctor_vb' }),
-            'O': () => ({ namekind: 'special', spelling: '__copy_ctor_closure' }),
-            'P': todo,
-            'Q': todo,
-            'R': () => parse(data, "unqualified name", '?_R')({
-                '0': () => ({ namekind: 'special', specialname: 'RTTI Type Descriptor', type: parse_type(data) }),
-                '1': () => ({
-                    namekind: 'special', specialname: 'RTTI Base Class Descriptor',
-                    nvoffset: parse_number(data), vbptroffset: parse_number(data), vbtableoffset: parse_number(data),
-                    flags: parse_number(data),
-                }),
-                '2': () => ({ namekind: 'special', specialname: 'RTTI Base Class Array' }),
-                '3': () => ({ namekind: 'special', specialname: 'RTTI Class Hierarchy Descriptor' }),
-                '4': () => ({ namekind: 'special', specialname: 'RTTI Complete Object Locator' }),
-            }),
-            'S': () => ({ namekind: 'special', specialname: 'local vftable' }),
-            'T': () => ({ namekind: 'special', spelling: '__local_vftable_ctor_closure' }),
-            'U': () => ({ namekind: 'operator', spelling: 'operator new[]' }),
-            'V': () => ({ namekind: 'operator', spelling: 'operator delete[]' }),
-            'W': todo,
-            'X': todo,
-            'Y': todo,
-            'Z': todo,
-            '0': () => ({ namekind: 'operator', spelling: 'operator/=' }),
-            '1': () => ({ namekind: 'operator', spelling: 'operator%=' }),
-            '2': () => ({ namekind: 'operator', spelling: 'operator>>=' }),
-            '3': () => ({ namekind: 'operator', spelling: 'operator<<=' }),
-            '4': () => ({ namekind: 'operator', spelling: 'operator&=' }),
-            '5': () => ({ namekind: 'operator', spelling: 'operator|=' }),
-            '6': () => ({ namekind: 'operator', spelling: 'operator^=' }),
-            '7': () => ({ namekind: 'special', specialname: 'vftable' }),
-            '8': () => ({ namekind: 'special', specialname: 'vbtable' }),
-            '9': () => ({ namekind: 'special', specialname: 'vcall' }),
-            '_': () => parse(data, "unqualified name", '?__')({
-                'A': () => ({ namekind: 'special', spelling: '__man_vec_ctor' }),
-                'B': () => ({ namekind: 'special', spelling: '__man_vec_dtor' }),
-                'C': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor' }),
-                'D': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor_vb' }),
-                'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', namefor: parse_unqualified_name_or_mangled(data) }),
-                'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', namefor: parse_unqualified_name_or_mangled(data) }),
-                'G': () => ({ namekind: 'special', spelling: '__vec_copy_ctor' }),
-                'H': () => ({ namekind: 'special', spelling: '__vec_copy_ctor_vb' }),
-                'I': () => ({ namekind: 'special', spelling: '__man_vec_copy_ctor' }),
-                'J': () => ({ namekind: 'special', specialname: 'local static thread guard' }),
-                'K': () => ({ namekind: 'literal', spelling: parse_source_name(data) }),
-                'L': () => ({ namekind: 'operator', spelling: 'operator co_await' }),
-                'M': () => ({ namekind: 'operator', spelling: 'operator<=>' }),
-            }),
-        }),
-    });
-}
-function parse_qualified_name(data) {
-    return { ...parse_unqualified_name(data), scope: parse_scope(data) };
-}
-function parse_modifiers(data) {
-    return parse(data, "type qualifier")({
-        'A': () => ({}),
-        'B': () => ({ cv: 'const' }),
-        'C': () => ({ cv: 'volatile' }),
-        'D': () => ({ cv: 'const volatile' }),
-        'E': () => ({ ptr64: '__ptr64', ...parse_modifiers(data) }),
-        'F': () => ({ unaligned: '__unaligned', ...parse_modifiers(data) }),
-        'G': () => ({ refqual: '&', ...parse_modifiers(data) }),
-        'H': () => ({ refqual: '&&', ...parse_modifiers(data) }),
-        'I': () => ({ restrict: '__restrict', ...parse_modifiers(data) }),
-        'J': () => ({ format: 'huge', cv: 'const' }),
-        'K': () => ({ format: 'huge', cv: 'volatile' }),
-        'L': () => ({ format: 'huge', cv: 'const volatile' }),
-        'M': todo,
-        'N': todo,
-        'O': todo,
-        'P': todo,
-        'Q': () => ({ member: 'member' }),
-        'R': () => ({ cv: 'const', member: 'member' }),
-        'S': () => ({ cv: 'volatile', member: 'member' }),
-        'T': () => ({ cv: 'const volatile', member: 'member' }),
-        'U': () => ({ format: 'far', member: 'member' }),
-        'V': () => ({ format: 'far', cv: 'const', member: 'member' }),
-        'W': () => ({ format: 'far', cv: 'volatile', member: 'member' }),
-        'X': () => ({ format: 'far', cv: 'const volatile', member: 'member' }),
-        'Y': () => ({ format: 'huge', member: 'member' }),
-        'Z': () => ({ format: 'huge', cv: 'const', member: 'member' }),
-        '0': () => ({ format: 'huge', cv: 'volatile', member: 'member' }),
-        '1': () => ({ format: 'huge', cv: 'const volatile', member: 'member' }),
-        '2': todo,
-        '3': todo,
-        '4': todo,
-        '5': todo,
-        '6': () => ({ function: 'function' }),
-        '7': () => ({ format: 'far', function: 'function' }),
-        '8': () => ({ member: 'member', function: 'function' }),
-        '9': () => ({ format: 'far', member: 'member', function: 'function' }),
-        '_': todo,
-        '$': todo,
-    });
-}
-function parse_member_function_type(data) {
-    return { ...parse_modifiers(data), ...parse_function_type(data) };
-}
-function parse_calling_convention(data) {
-    return parse(data, "calling convention")({
-        'A': () => ({ calling_convention: '__cdecl' }),
-        'B': () => ({ calling_convention: '__cdecl', export: '__export' }),
-        'C': () => ({ calling_convention: '__pascal' }),
-        'D': () => ({ calling_convention: '__pascal', export: '__export' }),
-        'E': () => ({ calling_convention: '__thiscall' }),
-        'F': () => ({ calling_convention: '__thiscall', export: '__export' }),
-        'G': () => ({ calling_convention: '__stdcall' }),
-        'H': () => ({ calling_convention: '__stdcall', export: '__export' }),
-        'I': () => ({ calling_convention: '__fastcall' }),
-        'J': () => ({ calling_convention: '__fastcall', export: '__export' }),
-        'M': () => ({ calling_convention: '__clrcall' }),
-        'Q': () => ({ calling_convention: '__vectorcall' }),
-        'W': () => ({ calling_convention: '__regcall' }),
-    });
-}
-function parse_function_type(data) {
-    let cc = parse_calling_convention(data);
-    let return_type = parse(data, "function return type")({
-        '@': () => undefined,
-        default: () => parse_type(data),
-    });
-    let { params, variadic } = parse(data, "function parameter")({
-        'X': () => ({ params: [] }),
-        default: () => parse_parameter_list(data),
-    });
-    let except = parse(data, "noexcept specification")({
-        'Z': () => undefined,
-        '_': () => parse(data, "noexcept specification", '_')({
-            'E': () => 'noexcept',
-        })
-    });
-    return { typekind: 'function', ...cc, return_type, params, variadic, except };
-}
-function parse_array_type(data) {
-    let dimension = parse_number(data);
-    let bounds = [...Array(dimension)].map(() => parse_number(data));
-    let element_type = parse_type(data);
-    return { typekind: 'array', dimension, bounds, element_type };
-}
-function parse_full_type(data) {
-    const modifiers = parse_modifiers(data);
-    if (modifiers.member) {
-        if (modifiers.function)
-            return { ...modifiers, class_name: parse_qualified_name(data), ...parse_member_function_type(data) };
-        return { ...modifiers, class_name: parse_qualified_name(data), ...parse_type(data) };
-    } else {
-        if (modifiers.function)
-            return { ...modifiers, ...parse_function_type(data) };
-        return { ...modifiers, ...parse_type(data) };
+                const numstring = this.parse_source_name();
+                return +('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
+            },
+        });
+        return sign * value;
     }
-}
-function parse_template_argument_or_extended_type(data) {
-    return parse(data, "type or template argument", '$')({
-        'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: parse_mangled(data) }),
-        'M': () => ({ type: parse_type(data), ...parse_template_argument_or_extended_type(data) }),
-        'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
-        '0': () => ({ typekind: 'template argument', argkind: 'integral', value: parse_number(data) }),
-        '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: parse_mangled(data) }),
-        '$': () => parse(data, "type or template argument", '$$')({
-            'A': () => parse_full_type(data),
-            'B': () => parse(data, "type", '$$B')({
-                'Y': () => parse_array_type(data),
-            }),
-            'C': () => ({ ...parse_modifiers(data), ...parse_type(data) }),
-            'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: parse_full_type(data) }),
-            'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: parse_full_type(data) }),
-            'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
-            'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
-            'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: parse_qualified_name(data) }),
-            'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
-        })
-    });
-}
-function parse_type(data) {
-    return parse(data, "type")({
-        'A': () => ({ typekind: 'reference', typename: '&', pointee_type: parse_full_type(data) }),
-        'B': () => ({ typekind: 'reference', typename: '&', pointercv: 'volatile', pointee_type: parse_full_type(data) }),
-        'C': () => ({ typekind: 'basic', typename: 'signed char' }),
-        'D': () => ({ typekind: 'basic', typename: 'char' }),
-        'E': () => ({ typekind: 'basic', typename: 'unsigned char' }),
-        'F': () => ({ typekind: 'basic', typename: 'short' }),
-        'G': () => ({ typekind: 'basic', typename: 'unsigned short' }),
-        'H': () => ({ typekind: 'basic', typename: 'int' }),
-        'I': () => ({ typekind: 'basic', typename: 'unsigned int' }),
-        'J': () => ({ typekind: 'basic', typename: 'long' }),
-        'K': () => ({ typekind: 'basic', typename: 'long long' }),
-        'L': error,
-        'M': () => ({ typekind: 'basic', typename: 'float' }),
-        'N': () => ({ typekind: 'basic', typename: 'double' }),
-        'O': () => ({ typekind: 'basic', typename: 'long double' }),
-        'P': () => ({ typekind: 'pointer', typename: '*', pointee_type: parse_full_type(data) }),
-        'Q': () => ({ typekind: 'pointer', typename: '*', pointercv: 'const', pointee_type: parse_full_type(data) }),
-        'R': () => ({ typekind: 'pointer', typename: '*', pointercv: 'volatile', pointee_type: parse_full_type(data) }),
-        'S': () => ({ typekind: 'pointer', typename: '*', pointercv: 'const volatile', pointee_type: parse_full_type(data) }),
-        'T': () => ({ typekind: 'union', typename: parse_qualified_name(data) }),
-        'U': () => ({ typekind: 'struct', typename: parse_qualified_name(data) }),
-        'V': () => ({ typekind: 'class', typename: parse_qualified_name(data) }),
-        'W': () => ({
-            typekind: 'enum', enumbase: parse(data, "enum type", 'W')({
-                '0': () => 'char',
-                '1': () => 'unsigned char',
-                '2': () => 'short',
-                '3': () => 'unsigned short',
-                '4': () => 'int',
-                '5': () => 'unsigned int',
-                '6': () => 'long',
-                '7': () => 'unsigned long',
-            }), typename: parse_qualified_name(data)
-        }),
-        'X': () => ({ typekind: 'basic', typename: 'void' }),
-        'Y': () => parse_array_type(data),
-        'Z': error,
-        '?': () => parse_full_type(data),
-        '_': () => parse(data, "type", '_')({
-            'A': error,
-            'B': error,
-            'C': error,
-            'D': () => ({ typekind: 'builtin', typename: '__int8' }),
-            'E': () => ({ typekind: 'builtin', typename: 'unsigned __int8' }),
-            'F': () => ({ typekind: 'builtin', typename: '__int16' }),
-            'G': () => ({ typekind: 'builtin', typename: 'unsigned __int16' }),
-            'H': () => ({ typekind: 'builtin', typename: '__int32' }),
-            'I': () => ({ typekind: 'builtin', typename: 'unsigned __int32' }),
-            'J': () => ({ typekind: 'builtin', typename: '__int64' }),
-            'K': () => ({ typekind: 'builtin', typename: 'unsigned __int64' }),
-            'L': () => ({ typekind: 'builtin', typename: '__int128' }),
-            'M': () => ({ typekind: 'builtin', typename: 'unsigned __int128' }),
-            'N': () => ({ typekind: 'builtin', typename: 'bool' }),
-            'O': todo,
-            'P': error,
-            'Q': () => ({ typekind: 'builtin', typename: 'char8_t' }),
-            'R': error,
-            'S': () => ({ typekind: 'builtin', typename: 'char16_t' }),
-            'T': error,
-            'U': () => ({ typekind: 'builtin', typename: 'char32_t' }),
-            'V': error,
-            'W': () => ({ typekind: 'builtin', typename: 'wchar_t' }),
-            'X': error,
-            'Y': error,
-            'Z': error,
-            '0': error,
-            '1': error,
-            '2': error,
-            '3': error,
-            '4': error,
-            '5': error,
-            '6': error,
-            '7': error,
-            '8': error,
-            '9': error,
-            '_': () => parse(data, 'type', '__')({
-                'R': () => ({ typekind: 'builtin', typename: 'unknown-type' }),
-            }),
-            '$': todo
-        }),
-        '$': () => parse_template_argument_or_extended_type(data),
-    });
-}
-function parse_vtable_base(data) {
-    return parse(data, "class name")({
-        '@': () => undefined,
-        default: () => parse_qualified_name(data),
-    });
-}
-function parse_vcall_thunk_info(data) {
-    return parse(data, "vcall thunk info")({
-        'A': () => ({}),
-        default: todo,
-    });
-}
-function parse_vtordisp_kind(data) {
-    return parse(data, "vtordisp kind")({
-        '0': () => ({ access: 'private' }),
-        '1': () => ({ access: 'private', far: 'far' }),
-        '2': () => ({ access: 'protected' }),
-        '3': () => ({ access: 'protected', far: 'far' }),
-        '4': () => ({ access: 'public' }),
-        '5': () => ({ access: 'public', far: 'far' }),
-    });
-}
-function parse_extra_info(data) {
-    return parse(data, "entity info")({
-        'A': () => ({ kind: 'function', access: 'private', ...parse_member_function_type(data) }),
-        'B': () => ({ kind: 'function', access: 'private', far: 'far', ...parse_member_function_type(data) }),
-        'C': () => ({ kind: 'function', access: 'private', specifier: 'static', ...parse_function_type(data) }),
-        'D': () => ({ kind: 'function', access: 'private', specifier: 'static', far: 'far', ...parse_function_type(data) }),
-        'E': () => ({ kind: 'function', access: 'private', specifier: 'virtual', ...parse_member_function_type(data) }),
-        'F': () => ({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far', ...parse_member_function_type(data) }),
-        'G': () => ({ kind: 'function', access: 'private', adjustment: parse_number(data), ...parse_member_function_type(data) }),
-        'H': () => ({ kind: 'function', access: 'private', far: 'far', adjustment: parse_number(data), ...parse_member_function_type(data) }),
-        'I': () => ({ kind: 'function', access: 'protected', ...parse_member_function_type(data) }),
-        'J': () => ({ kind: 'function', access: 'protected', far: 'far', ...parse_member_function_type(data) }),
-        'K': () => ({ kind: 'function', access: 'protected', specifier: 'static', ...parse_function_type(data) }),
-        'L': () => ({ kind: 'function', access: 'protected', specifier: 'static', far: 'far', ...parse_function_type(data) }),
-        'M': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', ...parse_member_function_type(data) }),
-        'N': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far', ...parse_member_function_type(data) }),
-        'O': () => ({ kind: 'function', access: 'protected', adjustment: parse_number(data), ...parse_member_function_type(data) }),
-        'P': () => ({ kind: 'function', access: 'protected', far: 'far', adjustment: parse_number(data), ...parse_member_function_type(data) }),
-        'Q': () => ({ kind: 'function', access: 'public', ...parse_member_function_type(data) }),
-        'R': () => ({ kind: 'function', access: 'public', far: 'far', ...parse_member_function_type(data) }),
-        'S': () => ({ kind: 'function', access: 'public', specifier: 'static', ...parse_function_type(data) }),
-        'T': () => ({ kind: 'function', access: 'public', specifier: 'static', far: 'far', ...parse_function_type(data) }),
-        'U': () => ({ kind: 'function', access: 'public', specifier: 'virtual', ...parse_member_function_type(data) }),
-        'V': () => ({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far', ...parse_member_function_type(data) }),
-        'W': () => ({ kind: 'function', access: 'public', adjustment: parse_number(data), ...parse_member_function_type(data) }),
-        'X': () => ({ kind: 'function', access: 'public', far: 'far', adjustment: parse_number(data), ...parse_member_function_type(data) }),
-        'Y': () => ({ kind: 'function', ...parse_function_type(data) }),
-        'Z': () => ({ kind: 'function', far: 'far', ...parse_function_type(data) }),
-        '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
-        '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
-        '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
-        '3': () => ({ kind: 'variable', ...parse_type(data), ...parse_modifiers(data) }),
-        '4': () => ({ kind: 'variable', specifier: 'static', ...parse_type(data), ...parse_modifiers(data) }),
-        '5': todo,
-        '6': () => ({ kind: 'special', ...parse_modifiers(data), base: parse_vtable_base(data) }),
-        '7': () => ({ kind: 'special', ...parse_modifiers(data), base: parse_vtable_base(data) }),
-        '8': () => ({ kind: 'special' }),
-        '9': () => ({ kind: 'function' }),
-        '_': todo,
-        '$': () => parse(data, "entity info", '$')({
-            'B': () => ({ kind: 'vcall', callindex: parse_number(data), ...parse_vcall_thunk_info(data), ...parse_calling_convention(data) }),
-            'R': () => ({ kind: 'function', ...parse_vtordisp_kind(data),
-                vbptrdisp: parse_number(data), vbindex: parse_number(data), vtordisp: parse_number(data), adjustment: parse_number(data),
-                ...parse_member_function_type(data),
-            }),
-            default: () => ({ kind: 'function', ...parse_vtordisp_kind(data),
-                vtordisp: parse_number(data), adjustment: parse_number(data),
-                ...parse_member_function_type(data)
-            }),
-        }),
-    });
-}
-function parse_mangled_after_question_mark(data) {
-    const name = parse(data, "unqualified name")({
-        '?': () => parse(data, "unqualified name")({
-            '$': () => parse_template_name(data),
-            default: () => parse_special_name(data),
-        }),
-        default: () => parse_unqualified_name(data),
-    });
-    if (name.namekind === 'string')
+    parse_string_literal_name() {
+        const wide = this.parse("string literal width")({
+            '0': () => undefined,
+            '1': () => 'wide',
+        });
+        let [length, crc, str] = [this.parse_number(), this.parse_source_name(), this.parse_source_name()];
+        const [ord_diff, hex] = [(s, t) => s.charCodeAt(0) - t.charCodeAt(0), (i) => i.toString(16)];
+        str = str.replace(/\?[a-z]/g, (m) => `\\x${hex(ord_diff(m[1], 'a') + 0xE1)}`);
+        str = str.replace(/\?[A-Z]/g, (m) => `\\x${hex(ord_diff(m[1], 'A') + 0xC1)}`);
+        str = str.replace(/\?[0-9]/g, (m) => ",/\\:. \n\t'-"[ord_diff(m[1], '0')]);
+        str = str.replace(/\?\$(..)/g, (m, p) => `\\x${p.replace(/./g, (s) => hex(ord_diff(s, 'A')))}`);
+        return { namekind: 'string', wide, length, crc, content: str };
+    }
+    parse_template_name() {
+        const [names_prev_active, types_prev_active] = [this.names.active, this.types.active];
+        [this.names.active, this.types.active] = [this.names.stored.length, this.types.stored.length];
+        [this.names.stored[this.names.active], this.types.stored[this.types.active]] = [[], []];
+        const name = this.parse_unqualified_name();
+        const template_arguments = [];
+        while (this.input[this.index] !== '@')
+            template_arguments.push(this.parse_type());
+        this.index++;
+        [this.names.active, this.types.active] = [names_prev_active, types_prev_active];
+        return this.remember_name({ ...name, template_arguments });
+    }
+    remember_name(name) {
+        this.names.stored[this.names.active].push(name);
         return name;
-    return { ...name, scope: parse_scope(data), ...parse_extra_info(data) };
-}
-function parse_mangled(data) {
-    return parse(data, "mangled name")({
-        '?': () => parse_mangled_after_question_mark(data),
-        default: error,
-    });
+    }
+    parse_parameter_list() {
+        const params = [];
+        while (this.input[this.index] !== '@' && this.input[this.index] !== 'Z') {
+            const type = this.parse('parameter type')({
+                '0': () => this.types.stored[this.types.active][0],
+                '1': () => this.types.stored[this.types.active][1],
+                '2': () => this.types.stored[this.types.active][2],
+                '3': () => this.types.stored[this.types.active][3],
+                '4': () => this.types.stored[this.types.active][4],
+                '5': () => this.types.stored[this.types.active][5],
+                '6': () => this.types.stored[this.types.active][6],
+                '7': () => this.types.stored[this.types.active][7],
+                '8': () => this.types.stored[this.types.active][8],
+                '9': () => this.types.stored[this.types.active][9],
+                default: () => {
+                    const type = this.parse_type();
+                    if (type.typekind !== 'basic')
+                        this.types.stored[this.types.active].push(type);
+                    return type;
+                }
+            });
+            params.push(type);
+        }
+        const variadic = this.parse("end of function parameter list")({
+            '@': () => undefined,
+            'Z': () => '...',
+        });
+        return { params, variadic };
+    }
+    parse_scope() {
+        const scopes = [];
+        while (this.input[this.index] !== '@')
+            scopes.push(this.parse("scope")({
+                '?': () => this.parse("scope", '?')({
+                    '$': () => this.parse_template_name(),
+                    '?': () => this.parse_mangled_after_question_mark(),
+                    default: () => this.parse_number(),
+                }),
+                default: () => this.parse_unqualified_name(),
+            }));
+        this.index++;
+        return scopes;
+    }
+    parse_unqualified_name() {
+        const name = this.parse("unqualified name")({
+            '?': () => this.parse("unqualified name")({
+                '$': () => this.remember_name(this.parse_template_name()),
+                default: () => this.parse_special_name(),
+            }),
+            '0': () => this.names.stored[this.names.active][0],
+            '1': () => this.names.stored[this.names.active][1],
+            '2': () => this.names.stored[this.names.active][2],
+            '3': () => this.names.stored[this.names.active][3],
+            '4': () => this.names.stored[this.names.active][4],
+            '5': () => this.names.stored[this.names.active][5],
+            '6': () => this.names.stored[this.names.active][6],
+            '7': () => this.names.stored[this.names.active][7],
+            '8': () => this.names.stored[this.names.active][8],
+            '9': () => this.names.stored[this.names.active][9],
+            default: () => this.remember_name({ namekind: 'identifier', spelling: this.parse_source_name() }),
+        });
+        if (name.namekind === 'string')
+            throw `error: mangled name '?_C' is not expected to appear here\nsource string: ${this.dump()}`;
+        return name;
+    }
+    parse_unqualified_name_or_mangled() {
+        return this.parse("unqualified or mangled name")({
+            '?': () => this.parse("unqualified or mangled name", '?')({
+                '$': () => this.parse_template_name(),
+                default: () => {
+                    const mangled_name = this.parse_mangled_after_question_mark();
+                    return this.parse("end of inner mangled name")({
+                        '@': () => mangled_name
+                    });
+                }
+            }),
+            default: () => this.parse_unqualified_name()
+        });
+    }
+    parse_special_name() {
+        return this.parse("unqualified name")({
+            'A': () => ({ namekind: 'operator', spelling: 'operator[]' }),
+            'B': () => ({ namekind: 'special', specialname: 'conversion' }),
+            'C': () => ({ namekind: 'operator', spelling: 'operator->' }),
+            'D': () => ({ namekind: 'operator', spelling: 'operator*' }),
+            'E': () => ({ namekind: 'operator', spelling: 'operator++' }),
+            'F': () => ({ namekind: 'operator', spelling: 'operator--' }),
+            'G': () => ({ namekind: 'operator', spelling: 'operator-' }),
+            'H': () => ({ namekind: 'operator', spelling: 'operator+' }),
+            'I': () => ({ namekind: 'operator', spelling: 'operator&' }),
+            'J': () => ({ namekind: 'operator', spelling: 'operator->*' }),
+            'K': () => ({ namekind: 'operator', spelling: 'operator/' }),
+            'L': () => ({ namekind: 'operator', spelling: 'operator%' }),
+            'M': () => ({ namekind: 'operator', spelling: 'operator< ' }),
+            'N': () => ({ namekind: 'operator', spelling: 'operator<=' }),
+            'O': () => ({ namekind: 'operator', spelling: 'operator> ' }),
+            'P': () => ({ namekind: 'operator', spelling: 'operator>=' }),
+            'Q': () => ({ namekind: 'operator', spelling: 'operator,' }),
+            'R': () => ({ namekind: 'operator', spelling: 'operator()' }),
+            'S': () => ({ namekind: 'operator', spelling: 'operator~' }),
+            'T': () => ({ namekind: 'operator', spelling: 'operator^' }),
+            'U': () => ({ namekind: 'operator', spelling: 'operator|' }),
+            'V': () => ({ namekind: 'operator', spelling: 'operator&&' }),
+            'W': () => ({ namekind: 'operator', spelling: 'operator||' }),
+            'X': () => ({ namekind: 'operator', spelling: 'operator*=' }),
+            'Y': () => ({ namekind: 'operator', spelling: 'operator+=' }),
+            'Z': () => ({ namekind: 'operator', spelling: 'operator-=' }),
+            '0': () => ({ namekind: 'special', specialname: 'constructor' }),
+            '1': () => ({ namekind: 'special', specialname: 'destructor' }),
+            '2': () => ({ namekind: 'operator', spelling: 'operator new' }),
+            '3': () => ({ namekind: 'operator', spelling: 'operator delete' }),
+            '4': () => ({ namekind: 'operator', spelling: 'operator=' }),
+            '5': () => ({ namekind: 'operator', spelling: 'operator>>' }),
+            '6': () => ({ namekind: 'operator', spelling: 'operator<<' }),
+            '7': () => ({ namekind: 'operator', spelling: 'operator!' }),
+            '8': () => ({ namekind: 'operator', spelling: 'operator==' }),
+            '9': () => ({ namekind: 'operator', spelling: 'operator!=' }),
+            '_': () => this.parse("unqualified name", '?_')({
+                'A': () => ({ namekind: 'special', specialname: 'typeof' }),
+                'B': () => ({ namekind: 'special', specialname: 'local static guard' }),
+                'C': () => this.parse("string literal", '?_C')({
+                    '@': () => this.parse("string literal", '?_C@')({
+                        '_': () => this.parse_string_literal_name()
+                    })
+                }),
+                'D': () => ({ namekind: 'special', spelling: '__vbaseDtor' }),
+                'E': () => ({ namekind: 'special', spelling: '__vecDelDtor' }),
+                'F': () => ({ namekind: 'special', spelling: '__dflt_ctor_closure' }),
+                'G': () => ({ namekind: 'special', spelling: '__delDtor' }),
+                'H': () => ({ namekind: 'special', spelling: '__vec_ctor' }),
+                'I': () => ({ namekind: 'special', spelling: '__vec_dtor' }),
+                'J': () => ({ namekind: 'special', spelling: '__vec_ctor_vb' }),
+                'K': () => ({ namekind: 'special', specialname: 'virtual displacement map' }),
+                'L': () => ({ namekind: 'special', spelling: '__ehvec_ctor' }),
+                'M': () => ({ namekind: 'special', spelling: '__ehvec_dtor' }),
+                'N': () => ({ namekind: 'special', spelling: '__ehvec_ctor_vb' }),
+                'O': () => ({ namekind: 'special', spelling: '__copy_ctor_closure' }),
+                'P': todo,
+                'Q': todo,
+                'R': () => this.parse("unqualified name", '?_R')({
+                    '0': () => ({ namekind: 'special', specialname: 'RTTI Type Descriptor', type: this.parse_type() }),
+                    '1': () => ({
+                        namekind: 'special', specialname: 'RTTI Base Class Descriptor',
+                        nvoffset: this.parse_number(), vbptroffset: this.parse_number(), vbtableoffset: this.parse_number(),
+                        flags: this.parse_number(),
+                    }),
+                    '2': () => ({ namekind: 'special', specialname: 'RTTI Base Class Array' }),
+                    '3': () => ({ namekind: 'special', specialname: 'RTTI Class Hierarchy Descriptor' }),
+                    '4': () => ({ namekind: 'special', specialname: 'RTTI Complete Object Locator' }),
+                }),
+                'S': () => ({ namekind: 'special', specialname: 'local vftable' }),
+                'T': () => ({ namekind: 'special', spelling: '__local_vftable_ctor_closure' }),
+                'U': () => ({ namekind: 'operator', spelling: 'operator new[]' }),
+                'V': () => ({ namekind: 'operator', spelling: 'operator delete[]' }),
+                'W': todo,
+                'X': todo,
+                'Y': todo,
+                'Z': todo,
+                '0': () => ({ namekind: 'operator', spelling: 'operator/=' }),
+                '1': () => ({ namekind: 'operator', spelling: 'operator%=' }),
+                '2': () => ({ namekind: 'operator', spelling: 'operator>>=' }),
+                '3': () => ({ namekind: 'operator', spelling: 'operator<<=' }),
+                '4': () => ({ namekind: 'operator', spelling: 'operator&=' }),
+                '5': () => ({ namekind: 'operator', spelling: 'operator|=' }),
+                '6': () => ({ namekind: 'operator', spelling: 'operator^=' }),
+                '7': () => ({ namekind: 'special', specialname: 'vftable' }),
+                '8': () => ({ namekind: 'special', specialname: 'vbtable' }),
+                '9': () => ({ namekind: 'special', specialname: 'vcall' }),
+                '_': () => this.parse("unqualified name", '?__')({
+                    'A': () => ({ namekind: 'special', spelling: '__man_vec_ctor' }),
+                    'B': () => ({ namekind: 'special', spelling: '__man_vec_dtor' }),
+                    'C': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor' }),
+                    'D': () => ({ namekind: 'special', spelling: '__ehvec_copy_ctor_vb' }),
+                    'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', namefor: this.parse_unqualified_name_or_mangled() }),
+                    'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', namefor: this.parse_unqualified_name_or_mangled() }),
+                    'G': () => ({ namekind: 'special', spelling: '__vec_copy_ctor' }),
+                    'H': () => ({ namekind: 'special', spelling: '__vec_copy_ctor_vb' }),
+                    'I': () => ({ namekind: 'special', spelling: '__man_vec_copy_ctor' }),
+                    'J': () => ({ namekind: 'special', specialname: 'local static thread guard' }),
+                    'K': () => ({ namekind: 'literal', spelling: this.parse_source_name() }),
+                    'L': () => ({ namekind: 'operator', spelling: 'operator co_await' }),
+                    'M': () => ({ namekind: 'operator', spelling: 'operator<=>' }),
+                }),
+            }),
+        });
+    }
+    parse_qualified_name() {
+        return { ...this.parse_unqualified_name(), scope: this.parse_scope() };
+    }
+    parse_modifiers() {
+        return this.parse("type qualifier")({
+            'A': () => ({}),
+            'B': () => ({ cv: 'const' }),
+            'C': () => ({ cv: 'volatile' }),
+            'D': () => ({ cv: 'const volatile' }),
+            'E': () => ({ ptr64: '__ptr64', ...this.parse_modifiers() }),
+            'F': () => ({ unaligned: '__unaligned', ...this.parse_modifiers() }),
+            'G': () => ({ refqual: '&', ...this.parse_modifiers() }),
+            'H': () => ({ refqual: '&&', ...this.parse_modifiers() }),
+            'I': () => ({ restrict: '__restrict', ...this.parse_modifiers() }),
+            'J': () => ({ format: 'huge', cv: 'const' }),
+            'K': () => ({ format: 'huge', cv: 'volatile' }),
+            'L': () => ({ format: 'huge', cv: 'const volatile' }),
+            'M': todo,
+            'N': todo,
+            'O': todo,
+            'P': todo,
+            'Q': () => ({ member: 'member' }),
+            'R': () => ({ cv: 'const', member: 'member' }),
+            'S': () => ({ cv: 'volatile', member: 'member' }),
+            'T': () => ({ cv: 'const volatile', member: 'member' }),
+            'U': () => ({ format: 'far', member: 'member' }),
+            'V': () => ({ format: 'far', cv: 'const', member: 'member' }),
+            'W': () => ({ format: 'far', cv: 'volatile', member: 'member' }),
+            'X': () => ({ format: 'far', cv: 'const volatile', member: 'member' }),
+            'Y': () => ({ format: 'huge', member: 'member' }),
+            'Z': () => ({ format: 'huge', cv: 'const', member: 'member' }),
+            '0': () => ({ format: 'huge', cv: 'volatile', member: 'member' }),
+            '1': () => ({ format: 'huge', cv: 'const volatile', member: 'member' }),
+            '2': todo,
+            '3': todo,
+            '4': todo,
+            '5': todo,
+            '6': () => ({ function: 'function' }),
+            '7': () => ({ format: 'far', function: 'function' }),
+            '8': () => ({ member: 'member', function: 'function' }),
+            '9': () => ({ format: 'far', member: 'member', function: 'function' }),
+            '_': todo,
+            '$': todo,
+        });
+    }
+    parse_member_function_type() {
+        return { ...this.parse_modifiers(), ...this.parse_function_type() };
+    }
+    parse_calling_convention() {
+        return this.parse("calling convention")({
+            'A': () => ({ calling_convention: '__cdecl' }),
+            'B': () => ({ calling_convention: '__cdecl', export: '__export' }),
+            'C': () => ({ calling_convention: '__pascal' }),
+            'D': () => ({ calling_convention: '__pascal', export: '__export' }),
+            'E': () => ({ calling_convention: '__thiscall' }),
+            'F': () => ({ calling_convention: '__thiscall', export: '__export' }),
+            'G': () => ({ calling_convention: '__stdcall' }),
+            'H': () => ({ calling_convention: '__stdcall', export: '__export' }),
+            'I': () => ({ calling_convention: '__fastcall' }),
+            'J': () => ({ calling_convention: '__fastcall', export: '__export' }),
+            'M': () => ({ calling_convention: '__clrcall' }),
+            'Q': () => ({ calling_convention: '__vectorcall' }),
+            'W': () => ({ calling_convention: '__regcall' }),
+        });
+    }
+    parse_function_type() {
+        let cc = this.parse_calling_convention();
+        let return_type = this.parse("function return type")({
+            '@': () => undefined,
+            default: () => this.parse_type(),
+        });
+        let { params, variadic } = this.parse("function parameter")({
+            'X': () => ({ params: [] }),
+            default: () => this.parse_parameter_list(),
+        });
+        let except = this.parse("noexcept specification")({
+            'Z': () => undefined,
+            '_': () => this.parse("noexcept specification", '_')({
+                'E': () => 'noexcept',
+            })
+        });
+        return { typekind: 'function', ...cc, return_type, params, variadic, except };
+    }
+    parse_array_type() {
+        let dimension = this.parse_number();
+        let bounds = [...Array(dimension)].map(() => this.parse_number());
+        let element_type = this.parse_type();
+        return { typekind: 'array', dimension, bounds, element_type };
+    }
+    parse_full_type() {
+        const modifiers = this.parse_modifiers();
+        if (modifiers.member) {
+            if (modifiers.function)
+                return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_member_function_type() };
+            return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_type() };
+        }
+        else {
+            if (modifiers.function)
+                return { ...modifiers, ...this.parse_function_type() };
+            return { ...modifiers, ...this.parse_type() };
+        }
+    }
+    parse_template_argument_or_extended_type() {
+        return this.parse("type or template argument", '$')({
+            'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
+            'M': () => ({ type: this.parse_type(), ...this.parse_template_argument_or_extended_type() }),
+            'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
+            '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_number() }),
+            '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
+            '$': () => this.parse("type or template argument", '$$')({
+                'A': () => this.parse_full_type(),
+                'B': () => this.parse("type", '$$B')({
+                    'Y': () => this.parse_array_type(),
+                }),
+                'C': () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
+                'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: this.parse_full_type() }),
+                'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
+                'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
+                'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
+                'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
+                'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
+            })
+        });
+    }
+    parse_type() {
+        return this.parse("type")({
+            'A': () => ({ typekind: 'reference', typename: '&', pointee_type: this.parse_full_type() }),
+            'B': () => ({ typekind: 'reference', typename: '&', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
+            'C': () => ({ typekind: 'basic', typename: 'signed char' }),
+            'D': () => ({ typekind: 'basic', typename: 'char' }),
+            'E': () => ({ typekind: 'basic', typename: 'unsigned char' }),
+            'F': () => ({ typekind: 'basic', typename: 'short' }),
+            'G': () => ({ typekind: 'basic', typename: 'unsigned short' }),
+            'H': () => ({ typekind: 'basic', typename: 'int' }),
+            'I': () => ({ typekind: 'basic', typename: 'unsigned int' }),
+            'J': () => ({ typekind: 'basic', typename: 'long' }),
+            'K': () => ({ typekind: 'basic', typename: 'long long' }),
+            'L': error,
+            'M': () => ({ typekind: 'basic', typename: 'float' }),
+            'N': () => ({ typekind: 'basic', typename: 'double' }),
+            'O': () => ({ typekind: 'basic', typename: 'long double' }),
+            'P': () => ({ typekind: 'pointer', typename: '*', pointee_type: this.parse_full_type() }),
+            'Q': () => ({ typekind: 'pointer', typename: '*', pointercv: 'const', pointee_type: this.parse_full_type() }),
+            'R': () => ({ typekind: 'pointer', typename: '*', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
+            'S': () => ({ typekind: 'pointer', typename: '*', pointercv: 'const volatile', pointee_type: this.parse_full_type() }),
+            'T': () => ({ typekind: 'union', typename: this.parse_qualified_name() }),
+            'U': () => ({ typekind: 'struct', typename: this.parse_qualified_name() }),
+            'V': () => ({ typekind: 'class', typename: this.parse_qualified_name() }),
+            'W': () => ({
+                typekind: 'enum', enumbase: this.parse("enum type", 'W')({
+                    '0': () => 'char',
+                    '1': () => 'unsigned char',
+                    '2': () => 'short',
+                    '3': () => 'unsigned short',
+                    '4': () => 'int',
+                    '5': () => 'unsigned int',
+                    '6': () => 'long',
+                    '7': () => 'unsigned long',
+                }), typename: this.parse_qualified_name()
+            }),
+            'X': () => ({ typekind: 'basic', typename: 'void' }),
+            'Y': () => this.parse_array_type(),
+            'Z': error,
+            '?': () => this.parse_full_type(),
+            '_': () => this.parse("type", '_')({
+                'A': error,
+                'B': error,
+                'C': error,
+                'D': () => ({ typekind: 'builtin', typename: '__int8' }),
+                'E': () => ({ typekind: 'builtin', typename: 'unsigned __int8' }),
+                'F': () => ({ typekind: 'builtin', typename: '__int16' }),
+                'G': () => ({ typekind: 'builtin', typename: 'unsigned __int16' }),
+                'H': () => ({ typekind: 'builtin', typename: '__int32' }),
+                'I': () => ({ typekind: 'builtin', typename: 'unsigned __int32' }),
+                'J': () => ({ typekind: 'builtin', typename: '__int64' }),
+                'K': () => ({ typekind: 'builtin', typename: 'unsigned __int64' }),
+                'L': () => ({ typekind: 'builtin', typename: '__int128' }),
+                'M': () => ({ typekind: 'builtin', typename: 'unsigned __int128' }),
+                'N': () => ({ typekind: 'builtin', typename: 'bool' }),
+                'O': todo,
+                'P': error,
+                'Q': () => ({ typekind: 'builtin', typename: 'char8_t' }),
+                'R': error,
+                'S': () => ({ typekind: 'builtin', typename: 'char16_t' }),
+                'T': error,
+                'U': () => ({ typekind: 'builtin', typename: 'char32_t' }),
+                'V': error,
+                'W': () => ({ typekind: 'builtin', typename: 'wchar_t' }),
+                'X': error,
+                'Y': error,
+                'Z': error,
+                '0': error,
+                '1': error,
+                '2': error,
+                '3': error,
+                '4': error,
+                '5': error,
+                '6': error,
+                '7': error,
+                '8': error,
+                '9': error,
+                '_': () => this.parse('type', '__')({
+                    'R': () => ({ typekind: 'builtin', typename: 'unknown-type' }),
+                }),
+                '$': todo
+            }),
+            '$': () => this.parse_template_argument_or_extended_type(),
+        });
+    }
+    parse_vtable_base() {
+        return this.parse("class name")({
+            '@': () => undefined,
+            default: () => this.parse_qualified_name(),
+        });
+    }
+    parse_vcall_thunk_info() {
+        return this.parse("vcall thunk info")({
+            'A': () => ({}),
+            default: todo,
+        });
+    }
+    parse_vtordisp_kind() {
+        return this.parse("vtordisp kind")({
+            '0': () => ({ access: 'private' }),
+            '1': () => ({ access: 'private', far: 'far' }),
+            '2': () => ({ access: 'protected' }),
+            '3': () => ({ access: 'protected', far: 'far' }),
+            '4': () => ({ access: 'public' }),
+            '5': () => ({ access: 'public', far: 'far' }),
+        });
+    }
+    parse_extra_info() {
+        return this.parse("entity info")({
+            'A': () => ({ kind: 'function', access: 'private', ...this.parse_member_function_type() }),
+            'B': () => ({ kind: 'function', access: 'private', far: 'far', ...this.parse_member_function_type() }),
+            'C': () => ({ kind: 'function', access: 'private', specifier: 'static', ...this.parse_function_type() }),
+            'D': () => ({ kind: 'function', access: 'private', specifier: 'static', far: 'far', ...this.parse_function_type() }),
+            'E': () => ({ kind: 'function', access: 'private', specifier: 'virtual', ...this.parse_member_function_type() }),
+            'F': () => ({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far', ...this.parse_member_function_type() }),
+            'G': () => ({ kind: 'thunk', access: 'private', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'H': () => ({ kind: 'thunk', access: 'private', far: 'far', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'I': () => ({ kind: 'function', access: 'protected', ...this.parse_member_function_type() }),
+            'J': () => ({ kind: 'function', access: 'protected', far: 'far', ...this.parse_member_function_type() }),
+            'K': () => ({ kind: 'function', access: 'protected', specifier: 'static', ...this.parse_function_type() }),
+            'L': () => ({ kind: 'function', access: 'protected', specifier: 'static', far: 'far', ...this.parse_function_type() }),
+            'M': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', ...this.parse_member_function_type() }),
+            'N': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far', ...this.parse_member_function_type() }),
+            'O': () => ({ kind: 'thunk', access: 'protected', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'P': () => ({ kind: 'thunk', access: 'protected', far: 'far', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'Q': () => ({ kind: 'function', access: 'public', ...this.parse_member_function_type() }),
+            'R': () => ({ kind: 'function', access: 'public', far: 'far', ...this.parse_member_function_type() }),
+            'S': () => ({ kind: 'function', access: 'public', specifier: 'static', ...this.parse_function_type() }),
+            'T': () => ({ kind: 'function', access: 'public', specifier: 'static', far: 'far', ...this.parse_function_type() }),
+            'U': () => ({ kind: 'function', access: 'public', specifier: 'virtual', ...this.parse_member_function_type() }),
+            'V': () => ({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far', ...this.parse_member_function_type() }),
+            'W': () => ({ kind: 'thunk', access: 'public', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'X': () => ({ kind: 'thunk', access: 'public', far: 'far', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'Y': () => ({ kind: 'function', ...this.parse_function_type() }),
+            'Z': () => ({ kind: 'function', far: 'far', ...this.parse_function_type() }),
+            '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
+            '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
+            '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
+            '3': () => ({ kind: 'variable', ...this.parse_type(), ...this.parse_modifiers() }),
+            '4': () => ({ kind: 'variable', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
+            '5': todo,
+            '6': () => ({ kind: 'special', ...this.parse_modifiers(), base: this.parse_vtable_base() }),
+            '7': () => ({ kind: 'special', ...this.parse_modifiers(), base: this.parse_vtable_base() }),
+            '8': () => ({ kind: 'special' }),
+            '9': () => ({ kind: 'function' }),
+            '_': todo,
+            '$': () => this.parse("entity info", '$')({
+                'B': () => ({ kind: 'thunk', callindex: this.parse_number(), ...this.parse_vcall_thunk_info(), ...this.parse_calling_convention() }),
+                'R': () => ({
+                    kind: 'thunk', ...this.parse_vtordisp_kind(),
+                    vbptrdisp: this.parse_number(), vbindex: this.parse_number(), vtordisp: this.parse_number(), adjustment: this.parse_number(),
+                    ...this.parse_member_function_type(),
+                }),
+                default: () => ({
+                    kind: 'thunk', ...this.parse_vtordisp_kind(),
+                    vtordisp: this.parse_number(), adjustment: this.parse_number(),
+                    ...this.parse_member_function_type()
+                }),
+            }),
+        });
+    }
+    parse_mangled_after_question_mark() {
+        const name = this.parse("unqualified name")({
+            '?': () => this.parse("unqualified name")({
+                '$': () => this.parse_template_name(),
+                default: () => this.parse_special_name(),
+            }),
+            default: () => this.parse_unqualified_name(),
+        });
+        if (name.namekind === 'string')
+            return name;
+        return { ...name, scope: this.parse_scope(), ...this.parse_extra_info() };
+    }
+    parse_mangled() {
+        return this.parse("mangled name")({
+            '?': () => this.parse_mangled_after_question_mark(),
+            default: error,
+        });
+    }
 }
 let filter_join = (sep) => (arr) => arr.filter(x => x).join(sep);
 function print_unqualified_name(ast) {
@@ -606,7 +612,7 @@ function print_unqualified_name(ast) {
             };
             const specialname = translate_special['' + ast.spelling] || ast.specialname;
             if (ast.scope) {
-                const enclosing_class_name = ast.scope[ast.scope.length - 1];
+                const enclosing_class_name = ast.scope[0];
                 if (enclosing_class_name && enclosing_class_name.spelling) {
                     if (specialname === 'constructor')
                         return enclosing_class_name.spelling + print_optional_template_arguments(ast);
@@ -617,8 +623,10 @@ function print_unqualified_name(ast) {
             const conversion_result_type = ast.return_type;
             if (conversion_result_type && specialname === 'conversion' && !ast.template_arguments)
                 return 'operator ' + print_type(conversion_result_type).join('');
-            if (ast.namefor)
-                return `'${specialname} for '${print_qualified_name(ast.namefor)}''`;
+            if (ast.namefor) {
+                const namefor = ast.namefor.scope ? print_qualified_name(ast.namefor) : print_unqualified_name(ast.namefor);
+                return `'${specialname} for '${namefor}''`;
+            }
             const base = ast.base;
             if (base)
                 return `'${specialname} for '${print_qualified_name(base)}''`;
@@ -626,12 +634,13 @@ function print_unqualified_name(ast) {
     }
 }
 function print_qualified_name(ast) {
-    const scope = ast.scope.map((scope) => {
+    const scope = ast.scope.reverse().map((scope) => {
         if (typeof scope === 'number') {
             if (isNaN(scope))
                 return "'anonymous namespace'";
             return `'${scope}'`;
-        } else if (scope.namekind === 'string' || scope.kind)
+        }
+        else if (scope.namekind === 'string' || scope.kind)
             return print_ast(scope);
         return print_unqualified_name(scope);
     });
@@ -706,5 +715,5 @@ function print_ast(ast) {
     return filter_join(' ')([left, name]) + right;
 }
 function demangle(input) {
-    return print_ast(demangle_to_ast(input));
+    return print_ast(new Demangler(input).parse_mangled());
 }
