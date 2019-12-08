@@ -1,6 +1,6 @@
 let error = () => { throw "error: cannot demangle"; };
 let todo = () => { throw "sorry: unimplemented demangling"; };
-class Demangler {
+export class Demangler {
     constructor(input, index = 0) {
         this.input = input;
         this.index = index;
@@ -13,7 +13,7 @@ class Demangler {
     parse(context, prefix = '') {
         return (map) => {
             let c = this.input[this.index];
-            function call(f) {
+            let call = (f) => {
                 if (this.index > this.input.length)
                     throw `error: unexpected end of string when demangling ${context}\nsource string: ${this.dump()}`;
                 else if (f === error)
@@ -22,7 +22,7 @@ class Demangler {
                     throw `sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${this.dump()}`;
                 else
                     return f();
-            }
+            };
             if (map[c]) {
                 this.index++;
                 return call(map[c]);
@@ -60,8 +60,8 @@ class Demangler {
     }
     parse_string_literal_name() {
         const wide = this.parse("string literal width")({
-            '0': () => undefined,
-            '1': () => 'wide',
+            '0': () => ({}),
+            '1': () => ({ wide: 'wide' }),
         });
         let [length, crc, str] = [this.parse_number(), this.parse_source_name(), this.parse_source_name()];
         const [ord_diff, hex] = [(s, t) => s.charCodeAt(0) - t.charCodeAt(0), (i) => i.toString(16)];
@@ -69,7 +69,7 @@ class Demangler {
         str = str.replace(/\?[A-Z]/g, (m) => `\\x${hex(ord_diff(m[1], 'A') + 0xC1)}`);
         str = str.replace(/\?[0-9]/g, (m) => ",/\\:. \n\t'-"[ord_diff(m[1], '0')]);
         str = str.replace(/\?\$(..)/g, (m, p) => `\\x${p.replace(/./g, (s) => hex(ord_diff(s, 'A')))}`);
-        return { namekind: 'string', wide, length, crc, content: str };
+        return { namekind: 'string', ...wide, length, crc, content: str };
     }
     parse_template_name() {
         const [names_prev_active, types_prev_active] = [this.names.active, this.types.active];
@@ -111,10 +111,10 @@ class Demangler {
             params.push(type);
         }
         const variadic = this.parse("end of function parameter list")({
-            '@': () => undefined,
-            'Z': () => '...',
+            '@': () => ({}),
+            'Z': () => ({ variadic: '...' }),
         });
-        return { params, variadic };
+        return { params, ...variadic };
     }
     parse_scope() {
         const scopes = [];
@@ -341,20 +341,20 @@ class Demangler {
     parse_function_type() {
         let cc = this.parse_calling_convention();
         let return_type = this.parse("function return type")({
-            '@': () => undefined,
-            default: () => this.parse_type(),
+            '@': () => ({}),
+            default: () => ({ return_type: this.parse_type() }),
         });
-        let { params, variadic } = this.parse("function parameter")({
+        let { params, variadic } = this.parse("function parameter list")({
             'X': () => ({ params: [] }),
             default: () => this.parse_parameter_list(),
         });
         let except = this.parse("noexcept specification")({
-            'Z': () => undefined,
+            'Z': () => ({}),
             '_': () => this.parse("noexcept specification", '_')({
-                'E': () => 'noexcept',
+                'E': () => ({ noexcept: 'noexcept' }),
             })
         });
-        return { typekind: 'function', ...cc, return_type, params, variadic, except };
+        return { typekind: 'function', ...cc, ...return_type, params, variadic, ...except };
     }
     parse_array_type() {
         let dimension = this.parse_number();
@@ -483,9 +483,9 @@ class Demangler {
         });
     }
     parse_vtable_base() {
-        return this.parse("class name")({
-            '@': () => undefined,
-            default: () => this.parse_qualified_name(),
+        return this.parse("base class name")({
+            '@': () => ({}),
+            default: () => ({ base: this.parse_qualified_name() }),
         });
     }
     parse_vcall_thunk_info() {
@@ -714,6 +714,6 @@ function print_ast(ast) {
     const [left, right] = print_type(ast);
     return filter_join(' ')([left, name]) + right;
 }
-function demangle(input) {
+export function demangle(input) {
     return print_ast(new Demangler(input).parse_mangled());
 }
