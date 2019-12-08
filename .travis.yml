@@ -3,4 +3,4 @@ git:
     depth: 1
 node_js:
 - 'node'
-script: node test.js
+script: node test.mjs

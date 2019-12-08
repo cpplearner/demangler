@@ -1,4 +1,4 @@
-let { demangle } = require('./msvc-demangler');
+import { demangle } from './msvc-demangler.mjs';
 
 [
     ["?f@@YADXZ", "char f()"],
