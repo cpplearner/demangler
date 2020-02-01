@@ -133,7 +133,7 @@ export class Demangler {
     parse_unqualified_name() {
         const name = this.parse("unqualified name")({
             '?': () => this.parse("unqualified name")({
-                '$': () => this.remember_name(this.parse_template_name()),
+                '$': () => this.parse_template_name(),
                 default: () => this.parse_special_name(),
             }),
             '0': () => this.names.stored[this.names.active][0],
@@ -634,7 +634,7 @@ function print_unqualified_name(ast) {
     }
 }
 function print_qualified_name(ast) {
-    const scope = ast.scope.reverse().map((scope) => {
+    const scope = [...ast.scope].reverse().map((scope) => {
         if (typeof scope === 'number') {
             if (isNaN(scope))
                 return "'anonymous namespace'";

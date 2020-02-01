@@ -3,6 +3,7 @@ import { demangle } from './msvc-demangler.mjs';
 [
     ["?f@@YADXZ", "char f()"],
     ["?f@@YADH@Z", "char f(int)"],
+    ["?f@@YAXPAU?$A@H@@PAU?$A@J@@PAU1foo@@PAU23@@Z", "void f(A<int> *, A<long> *, foo::A<int> *, foo::A<long> *)"],
     ["??_DY@@QAEXXZ", "void Y::'vbase destructor'()"],
     ["??_EY@@QAEPAXI@Z", "void * Y::'vector deleting destructor'(unsigned int)"],
     ["??_EX@@UAAPAXI@Z", "void * X::'vector deleting destructor'(unsigned int)"],
