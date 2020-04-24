@@ -313,7 +313,10 @@ export class Demangler {
             'I': () => ({ calling_convention: '__fastcall' }),
             'J': () => ({ calling_convention: '__fastcall', export: '__export' }),
             'M': () => ({ calling_convention: '__clrcall' }),
+            'O': () => ({ calling_convention: '__eabi' }),
             'Q': () => ({ calling_convention: '__vectorcall' }),
+            'S': () => ({ calling_convention: '__swift_1' }),
+            'U': () => ({ calling_convention: '__swift_2' }),
             'W': () => ({ calling_convention: '__regcall' }),
         });
     }
