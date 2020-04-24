@@ -41,6 +41,8 @@ import { demangle } from './msvc-demangler.mjs';
     ["?f@B@@$4PPPPPPPM@A@AEXXZ", "void B::f()"],
     ["??_EC@@$0PPPPPPPM@A@AEPAXI@Z", "void * C::'vector deleting destructor'(unsigned int)"],
     ["?f@B@@$R477PPPPPPPM@7AEXXZ", "void B::f()"],
+    ["??__Ex@@YAXXZ", "void 'dynamic initializer for 'x''()"],
+    ["??__Fa@N@@YAXXZ", "void N::'dynamic atexit destructor for 'a''()"],
     ["?x@?1??f@@YAXH@Z@4HA", "int [void f(int)]::'2'::x"],
     ["?$TSS0@?1??f@@YAXH@Z@4HA", "int [void f(int)]::'2'::$TSS0"],
     ["?x@?L@??f@@YAXH@Z@4HA", "int [void f(int)]::'11'::x"],
