@@ -677,7 +677,7 @@ function print_type(ast) {
         case 'function':
             const [ret_left = '', ret_right = ''] = ast.return_type ? print_type(ast.return_type) : [];
             const param_list = [...ast.params.map(t => print_type(t).join('')), ast.variadic];
-            const params_and_quals = [`(${filter_join(', ')(param_list)})`, ast.cv, ast.refqual, ast.except];
+            const params_and_quals = [`(${filter_join(', ')(param_list)})`, ast.cv, ast.refqual, ast.noexcept];
             if (ret_right)
                 return ['auto', filter_join(' ')(params_and_quals) + ' -> ' + ret_left + ret_right];
             return [ret_left, filter_join(' ')(params_and_quals) + ret_right];
