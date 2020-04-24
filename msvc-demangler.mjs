@@ -359,8 +359,18 @@ export class Demangler {
     }
     parse_template_argument_or_extended_type() {
         return this.parse("type or template argument", '$')({
-            'A': () => ({ typekind: 'template argument', argkind: 'float', value: this.parse_integer() }),
-            'B': () => ({ typekind: 'template argument', argkind: 'double', value: this.parse_integer() }),
+            'A': () => {
+                const intval = this.parse_integer();
+                const buf = new DataView(new ArrayBuffer(4));
+                buf.setUint32(0, Number(intval));
+                return ({ typekind: 'template argument', argkind: 'float', value: buf.getFloat32(0) });
+            },
+            'B': () => {
+                const intval = this.parse_integer();
+                const buf = new DataView(new ArrayBuffer(8));
+                buf.setBigUint64(0, intval);
+                return ({ typekind: 'template argument', argkind: 'double', value: buf.getFloat64(0) });
+            },
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
             'M': () => ({ type: this.parse_type(), ...this.parse_template_argument_or_extended_type() }),
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
@@ -670,7 +680,6 @@ function print_type(ast) {
             switch (ast.argkind) {
                 case 'float':
                 case 'double':
-                    return [argtype + `bit_cast<${ast.argkind}>(0x${ast.value.toString(16)})`, ''];
                 case 'integral':
                     return [argtype + ast.value, ''];
                 case 'entity':
