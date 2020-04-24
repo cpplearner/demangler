@@ -34,6 +34,14 @@ export class Demangler {
             return call(map.default || error);
         };
     }
+    parse_list(f) {
+        const list = [];
+        while (this.input[this.index] !== '@') {
+            list.push(f());
+        }
+        this.index++;
+        return list;
+    }
     parse_source_name() {
         const spelling = this.input.slice(this.index, this.input.indexOf('@', this.index));
         this.index += spelling.length + 1;
@@ -71,10 +79,7 @@ export class Demangler {
         [this.names.active, this.types.active] = [this.names.stored.length, this.types.stored.length];
         [this.names.stored[this.names.active], this.types.stored[this.types.active]] = [[], []];
         const name = this.parse_unqualified_name();
-        const template_arguments = [];
-        while (this.input[this.index] !== '@')
-            template_arguments.push(this.parse_type());
-        this.index++;
+        const template_arguments = this.parse_list(() => this.parse_type());
         [this.names.active, this.types.active] = [names_prev_active, types_prev_active];
         return this.remember_name({ ...name, template_arguments });
     }
@@ -103,18 +108,14 @@ export class Demangler {
         return { params, ...variadic };
     }
     parse_scope() {
-        const scopes = [];
-        while (this.input[this.index] !== '@')
-            scopes.push(this.parse("scope")({
-                '?': () => this.parse("scope", '?')({
-                    '$': () => this.parse_template_name(),
-                    '?': () => this.parse_mangled_after_question_mark(),
-                    default: () => this.parse_number(),
-                }),
-                default: () => this.parse_unqualified_name(),
-            }));
-        this.index++;
-        return scopes;
+        return this.parse_list(() => this.parse("scope")({
+            '?': () => this.parse("scope", '?')({
+                '$': () => this.parse_template_name(),
+                '?': () => this.parse_mangled_after_question_mark(),
+                default: () => this.parse_number(),
+            }),
+            default: () => this.parse_unqualified_name(),
+        }));
     }
     parse_unqualified_name() {
         const name = this.parse("unqualified name")({
