@@ -27,6 +27,10 @@ export class Demangler {
                 this.index++;
                 return call(map[c]);
             }
+            if (/\d/.test(c) && map['0-9']) {
+                this.index++;
+                return map['0-9'](+c);
+            }
             return call(map.default || error);
         };
     }
@@ -41,16 +45,7 @@ export class Demangler {
             default: () => 1,
         });
         const value = this.parse("number")({
-            '0': () => 1,
-            '1': () => 2,
-            '2': () => 3,
-            '3': () => 4,
-            '4': () => 5,
-            '5': () => 6,
-            '6': () => 7,
-            '7': () => 8,
-            '8': () => 9,
-            '9': () => 10,
+            '0-9': (n) => n + 1,
             default: () => {
                 const numstring = this.parse_source_name();
                 return +('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
@@ -91,16 +86,7 @@ export class Demangler {
         const params = [];
         while (this.input[this.index] !== '@' && this.input[this.index] !== 'Z') {
             const type = this.parse('parameter type')({
-                '0': () => this.types.stored[this.types.active][0],
-                '1': () => this.types.stored[this.types.active][1],
-                '2': () => this.types.stored[this.types.active][2],
-                '3': () => this.types.stored[this.types.active][3],
-                '4': () => this.types.stored[this.types.active][4],
-                '5': () => this.types.stored[this.types.active][5],
-                '6': () => this.types.stored[this.types.active][6],
-                '7': () => this.types.stored[this.types.active][7],
-                '8': () => this.types.stored[this.types.active][8],
-                '9': () => this.types.stored[this.types.active][9],
+                '0-9': (n) => this.types.stored[this.types.active][n],
                 default: () => {
                     const type = this.parse_type();
                     if (type.typekind !== 'basic')
@@ -136,16 +122,7 @@ export class Demangler {
                 '$': () => this.parse_template_name(),
                 default: () => this.parse_special_name(),
             }),
-            '0': () => this.names.stored[this.names.active][0],
-            '1': () => this.names.stored[this.names.active][1],
-            '2': () => this.names.stored[this.names.active][2],
-            '3': () => this.names.stored[this.names.active][3],
-            '4': () => this.names.stored[this.names.active][4],
-            '5': () => this.names.stored[this.names.active][5],
-            '6': () => this.names.stored[this.names.active][6],
-            '7': () => this.names.stored[this.names.active][7],
-            '8': () => this.names.stored[this.names.active][8],
-            '9': () => this.names.stored[this.names.active][9],
+            '0-9': (n) => this.names.stored[this.names.active][n],
             default: () => this.remember_name({ namekind: 'identifier', spelling: this.parse_source_name() }),
         });
         if (name.namekind === 'string')
