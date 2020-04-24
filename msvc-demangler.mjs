@@ -359,6 +359,8 @@ export class Demangler {
     }
     parse_template_argument_or_extended_type() {
         return this.parse("type or template argument", '$')({
+            'A': () => ({ typekind: 'template argument', argkind: 'float', value: this.parse_integer() }),
+            'B': () => ({ typekind: 'template argument', argkind: 'double', value: this.parse_integer() }),
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
             'M': () => ({ type: this.parse_type(), ...this.parse_template_argument_or_extended_type() }),
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
@@ -664,25 +666,24 @@ function print_type(ast) {
                 return ['auto', filter_join(' ')(params_and_quals) + ' -> ' + ret_left + ret_right];
             return [ret_left, filter_join(' ')(params_and_quals) + ret_right];
         case 'template argument':
+            const argtype = ast.type ? '(' + print_type(ast.type).join('') + ')' : '';
             switch (ast.argkind) {
+                case 'float':
+                case 'double':
+                    return [argtype + `bit_cast<${ast.argkind}>(0x${ast.value.toString(16)})`, ''];
                 case 'integral':
-                    if (ast.type)
-                        return ['(' + print_type(ast.type).join('') + ')' + ast.value.toString(), ''];
+                    return [argtype + ast.value, ''];
+                case 'entity':
+                    if (ast.entity.namekind === 'string')
+                        return ["'string'", ''];
                     else
-                        return [ast.value.toString(), ''];
+                        return [argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity), ''];
                 case 'empty non-type':
                 case 'empty type':
                 case 'pack separator':
                     return ['', ''];
                 case 'alias':
                     return [print_qualified_name(ast.typename), ''];
-                case 'entity':
-                    if (ast.entity.namekind === 'string')
-                        return ["'string'", ''];
-                    else if (ast.type)
-                        return [`(${print_type(ast.type).join('')})${ast.argref ? '' : '&'}${print_qualified_name(ast.entity)}`, ''];
-                    else
-                        return [(ast.argref ? '' : '&') + print_qualified_name(ast.entity), ''];
             }
             return ast;
     }
