@@ -41,6 +41,7 @@ import { demangle } from './msvc-demangler.mjs';
     ["?f@B@@$4PPPPPPPM@A@AEXXZ", "void B::f()"],
     ["??_EC@@$0PPPPPPPM@A@AEPAXI@Z", "void * C::'vector deleting destructor'(unsigned int)"],
     ["?f@B@@$R477PPPPPPPM@7AEXXZ", "void B::f()"],
+    ["?f@@YAXX_E", "void f() noexcept"],
 ].forEach(([mangled, expected]) => {
     try {
         let result = demangle(mangled);
