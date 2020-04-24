@@ -41,6 +41,15 @@ import { demangle } from './msvc-demangler.mjs';
     ["?f@B@@$4PPPPPPPM@A@AEXXZ", "void B::f()"],
     ["??_EC@@$0PPPPPPPM@A@AEPAXI@Z", "void * C::'vector deleting destructor'(unsigned int)"],
     ["?f@B@@$R477PPPPPPPM@7AEXXZ", "void B::f()"],
+    ["?x@?1??f@@YAXH@Z@4HA", "int [void f(int)]::'2'::x"],
+    ["?$TSS0@?1??f@@YAXH@Z@4HA", "int [void f(int)]::'2'::$TSS0"],
+    ["?x@?L@??f@@YAXH@Z@4HA", "int [void f(int)]::'11'::x"],
+    ["?x@?A0xc5095fac@@3HA", "int 'anonymous namespace'::x"],
+    ["??$f@$MJ0?0@@YAHXZ", "int f<(long)-1>()"],
+    ["??$f@$MH0A@@@YAHXZ", "int f<(int)0>()"],
+    ["??$f@$M_J0CLNMFEFNGLELIH@@@YAHXZ", "int f<(long long)12345678901234567>()"],
+    ["??$f@$M_J0CLNMFEFNGLELII@@@YAHXZ", "int f<(long long)12345678901234568>()"],
+    ["??$f@$$BY2120_J@@YAHXZ", "int f<long long[2][3][1]>()"],
     ["?f@@YAXX_E", "void f() noexcept"],
 ].forEach(([mangled, expected]) => {
     try {

@@ -47,16 +47,16 @@ export class Demangler {
         this.index += spelling.length + 1;
         return spelling;
     }
-    parse_number() {
+    parse_integer() {
         const sign = this.parse("number")({
-            '?': () => -1,
-            default: () => 1,
+            '?': () => -1n,
+            default: () => 1n,
         });
         const value = this.parse("number")({
-            '0-9': (n) => n + 1,
+            '0-9': (n) => BigInt(n + 1),
             default: () => {
                 const numstring = this.parse_source_name();
-                return +('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
+                return BigInt('0x0' + numstring.replace(/./g, (s) => 'ABCDEFGHIJKLMNOP'.indexOf(s).toString(16)));
             },
         });
         return sign * value;
@@ -66,7 +66,7 @@ export class Demangler {
             '0': () => ({}),
             '1': () => ({ wide: 'wide' }),
         });
-        let [length, crc, str] = [this.parse_number(), this.parse_source_name(), this.parse_source_name()];
+        let [length, crc, str] = [this.parse_integer(), this.parse_source_name(), this.parse_source_name()];
         const [ord_diff, hex] = [(s, t) => s.charCodeAt(0) - t.charCodeAt(0), (i) => i.toString(16)];
         str = str.replace(/\?[a-z]/g, (m) => `\\x${hex(ord_diff(m[1], 'a') + 0xE1)}`);
         str = str.replace(/\?[A-Z]/g, (m) => `\\x${hex(ord_diff(m[1], 'A') + 0xC1)}`);
@@ -110,9 +110,10 @@ export class Demangler {
     parse_scope() {
         return this.parse_list(() => this.parse("scope")({
             '?': () => this.parse("scope", '?')({
+                'A': () => this.parse_source_name(),
                 '$': () => this.parse_template_name(),
                 '?': () => this.parse_mangled_after_question_mark(),
-                default: () => this.parse_number(),
+                default: () => this.parse_integer(),
             }),
             default: () => this.parse_unqualified_name(),
         }));
@@ -208,8 +209,8 @@ export class Demangler {
                     '0': () => ({ namekind: 'special', specialname: 'RTTI Type Descriptor', type: this.parse_type() }),
                     '1': () => ({
                         namekind: 'special', specialname: 'RTTI Base Class Descriptor',
-                        nvoffset: this.parse_number(), vbptroffset: this.parse_number(), vbtableoffset: this.parse_number(),
-                        flags: this.parse_number(),
+                        nvoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
+                        flags: this.parse_integer(),
                     }),
                     '2': () => ({ namekind: 'special', specialname: 'RTTI Base Class Array' }),
                     '3': () => ({ namekind: 'special', specialname: 'RTTI Class Hierarchy Descriptor' }),
@@ -335,8 +336,8 @@ export class Demangler {
         return { typekind: 'function', ...cc, ...return_type, params, variadic, ...except };
     }
     parse_array_type() {
-        let dimension = this.parse_number();
-        let bounds = [...Array(dimension)].map(() => this.parse_number());
+        let dimension = this.parse_integer();
+        let bounds = [...Array(Number(dimension))].map(() => this.parse_integer());
         let element_type = this.parse_type();
         return { typekind: 'array', dimension, bounds, element_type };
     }
@@ -358,7 +359,7 @@ export class Demangler {
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
             'M': () => ({ type: this.parse_type(), ...this.parse_template_argument_or_extended_type() }),
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
-            '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_number() }),
+            '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '$': () => this.parse("type or template argument", '$$')({
                 'A': () => this.parse_full_type(),
@@ -490,24 +491,24 @@ export class Demangler {
             'D': () => ({ kind: 'function', access: 'private', specifier: 'static', far: 'far', ...this.parse_function_type() }),
             'E': () => ({ kind: 'function', access: 'private', specifier: 'virtual', ...this.parse_member_function_type() }),
             'F': () => ({ kind: 'function', access: 'private', specifier: 'virtual', far: 'far', ...this.parse_member_function_type() }),
-            'G': () => ({ kind: 'thunk', access: 'private', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
-            'H': () => ({ kind: 'thunk', access: 'private', far: 'far', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'G': () => ({ kind: 'thunk', access: 'private', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
+            'H': () => ({ kind: 'thunk', access: 'private', far: 'far', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
             'I': () => ({ kind: 'function', access: 'protected', ...this.parse_member_function_type() }),
             'J': () => ({ kind: 'function', access: 'protected', far: 'far', ...this.parse_member_function_type() }),
             'K': () => ({ kind: 'function', access: 'protected', specifier: 'static', ...this.parse_function_type() }),
             'L': () => ({ kind: 'function', access: 'protected', specifier: 'static', far: 'far', ...this.parse_function_type() }),
             'M': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', ...this.parse_member_function_type() }),
             'N': () => ({ kind: 'function', access: 'protected', specifier: 'virtual', far: 'far', ...this.parse_member_function_type() }),
-            'O': () => ({ kind: 'thunk', access: 'protected', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
-            'P': () => ({ kind: 'thunk', access: 'protected', far: 'far', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'O': () => ({ kind: 'thunk', access: 'protected', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
+            'P': () => ({ kind: 'thunk', access: 'protected', far: 'far', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
             'Q': () => ({ kind: 'function', access: 'public', ...this.parse_member_function_type() }),
             'R': () => ({ kind: 'function', access: 'public', far: 'far', ...this.parse_member_function_type() }),
             'S': () => ({ kind: 'function', access: 'public', specifier: 'static', ...this.parse_function_type() }),
             'T': () => ({ kind: 'function', access: 'public', specifier: 'static', far: 'far', ...this.parse_function_type() }),
             'U': () => ({ kind: 'function', access: 'public', specifier: 'virtual', ...this.parse_member_function_type() }),
             'V': () => ({ kind: 'function', access: 'public', specifier: 'virtual', far: 'far', ...this.parse_member_function_type() }),
-            'W': () => ({ kind: 'thunk', access: 'public', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
-            'X': () => ({ kind: 'thunk', access: 'public', far: 'far', adjustment: this.parse_number(), ...this.parse_member_function_type() }),
+            'W': () => ({ kind: 'thunk', access: 'public', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
+            'X': () => ({ kind: 'thunk', access: 'public', far: 'far', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
             'Y': () => ({ kind: 'function', ...this.parse_function_type() }),
             'Z': () => ({ kind: 'function', far: 'far', ...this.parse_function_type() }),
             '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
@@ -522,15 +523,15 @@ export class Demangler {
             '9': () => ({ kind: 'function' }),
             '_': todo,
             '$': () => this.parse("entity info", '$')({
-                'B': () => ({ kind: 'thunk', callindex: this.parse_number(), ...this.parse_vcall_thunk_info(), ...this.parse_calling_convention() }),
+                'B': () => ({ kind: 'thunk', callindex: this.parse_integer(), ...this.parse_vcall_thunk_info(), ...this.parse_calling_convention() }),
                 'R': () => ({
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
-                    vbptrdisp: this.parse_number(), vbindex: this.parse_number(), vtordisp: this.parse_number(), adjustment: this.parse_number(),
+                    vbptrdisp: this.parse_integer(), vbindex: this.parse_integer(), vtordisp: this.parse_integer(), adjustment: this.parse_integer(),
                     ...this.parse_member_function_type(),
                 }),
                 default: () => ({
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
-                    vtordisp: this.parse_number(), adjustment: this.parse_number(),
+                    vtordisp: this.parse_integer(), adjustment: this.parse_integer(),
                     ...this.parse_member_function_type()
                 }),
             }),
@@ -613,14 +614,14 @@ function print_unqualified_name(ast) {
 }
 function print_qualified_name(ast) {
     const scope = [...ast.scope].reverse().map((scope) => {
-        if (typeof scope === 'number') {
-            if (isNaN(scope))
-                return "'anonymous namespace'";
+        if (typeof scope === 'bigint')
             return `'${scope}'`;
-        }
-        else if (scope.namekind === 'string' || scope.kind)
-            return print_ast(scope);
-        return print_unqualified_name(scope);
+        else if (typeof scope === 'string')
+            return "'anonymous namespace'";
+        else if (scope.kind)
+            return `[${print_ast(scope)}]`;
+        else
+            return print_unqualified_name(scope);
     });
     return scope.concat(print_unqualified_name(ast)).join('::');
 }
