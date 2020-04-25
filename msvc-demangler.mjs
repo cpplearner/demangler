@@ -93,7 +93,7 @@ export class Demangler {
     parse_parameter_list() {
         const params = [];
         while (this.input[this.index] !== '@' && this.input[this.index] !== 'Z') {
-            const type = this.parse('parameter type')({
+            const type = this.parse("parameter type")({
                 '0-9': (n) => this.types.stored[this.types.active][n],
                 default: () => {
                     const type = this.parse_type();
@@ -209,7 +209,7 @@ export class Demangler {
                 'P': todo,
                 'Q': todo,
                 'R': () => this.parse("unqualified name", '?_R')({
-                    '0': () => ({ namekind: 'rtti', nameinfo: 'RTTI Type Descriptor', type: this.parse_type() }),
+                    '0': () => ({ namekind: 'rtti', nameinfo: 'RTTI Type Descriptor', relatedtype: this.parse_type() }),
                     '1': () => ({
                         namekind: 'rtti', nameinfo: 'RTTI Base Class Descriptor',
                         nvoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
@@ -360,8 +360,33 @@ export class Demangler {
             return { ...modifiers, ...this.parse_type() };
         }
     }
-    parse_template_argument_or_extended_type() {
-        return this.parse("type or template argument", '$')({
+    parse_array_member() {
+        return {
+            typekind: 'template argument', argkind: 'array', member_kind: 'array',
+            element_type: this.parse_type(),
+            elements: this.parse_list(() => {
+                const result = this.parse("member array value of class non-type template argument")({
+                    '3': () => this.parse_array_member(),
+                    default: () => this.parse_template_argument(),
+                });
+                return this.parse("end of array element value")({
+                    "@": () => result,
+                });
+            })
+        };
+    }
+    ;
+    parse_class_non_type_template_argument() {
+        const object_type = this.parse_type();
+        const members = this.parse_list(() => this.parse("member of class non-type template argument")({
+            '2': () => this.parse_class_non_type_template_argument(),
+            '3': () => this.parse_array_member(),
+            default: () => ({ argtype: this.parse_type(), ...this.parse_template_argument() }),
+        }));
+        return { typekind: 'template argument', argkind: 'class', object_type, members };
+    }
+    parse_template_argument() {
+        return this.parse("template argument")({
             'A': () => {
                 const intval = this.parse_integer();
                 const buf = new DataView(new ArrayBuffer(4));
@@ -375,23 +400,11 @@ export class Demangler {
                 return ({ typekind: 'template argument', argkind: 'double', value: buf.getFloat64(0) });
             },
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
-            'M': () => ({ type: this.parse_type(), ...this.parse_template_argument_or_extended_type() }),
+            'M': () => ({ argtype: this.parse_type(), ...this.parse_template_argument() }),
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
-            '$': () => this.parse("type or template argument", '$$')({
-                'A': () => this.parse_full_type(),
-                'B': () => this.parse("type", '$$B')({
-                    'Y': () => this.parse_array_type(),
-                }),
-                'C': () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
-                'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: this.parse_full_type() }),
-                'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
-                'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
-                'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
-                'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
-                'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
-            })
+            '2': () => this.parse_class_non_type_template_argument(),
         });
     }
     parse_type() {
@@ -476,7 +489,22 @@ export class Demangler {
                 }),
                 '$': todo
             }),
-            '$': () => this.parse_template_argument_or_extended_type(),
+            '$': () => this.parse("type or template argument", '$')({
+                '$': () => this.parse("type", '$$')({
+                    'A': () => this.parse_full_type(),
+                    'B': () => this.parse("type", '$$B')({
+                        'Y': () => this.parse_array_type(),
+                    }),
+                    'C': () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
+                    'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: this.parse_full_type() }),
+                    'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
+                    'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
+                    'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
+                    'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
+                    'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
+                }),
+                default: () => this.parse_template_argument(),
+            }),
         });
     }
     parse_vtable_base() {
@@ -646,6 +674,29 @@ function print_qualified_name(ast) {
     });
     return scope.concat(print_unqualified_name(ast)).join('::');
 }
+function print_template_argument(ast) {
+    const argtype = ast.argtype ? '(' + print_type(ast.argtype).join('') + ')' : '';
+    switch (ast.argkind) {
+        case 'float':
+        case 'double':
+        case 'integral':
+            return argtype + ast.value;
+        case 'entity':
+            if (ast.entity.namekind === 'string')
+                return "'string'";
+            else
+                return argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
+        case 'class':
+            const members = ast.members.map(print_template_argument).join(', ');
+            return print_type(ast.object_type).join('') + '{' + members + '}';
+        case 'array':
+            const [left, right] = print_type(ast.element_type);
+            const elements = ast.elements.map(a => print_template_argument(a)).join(', ');
+            return `(${left}[]${right})` + '{' + elements + '}';
+        case 'empty non-type':
+            return '';
+    }
+}
 function print_type(ast) {
     switch (ast.typekind) {
         case 'basic':
@@ -682,23 +733,14 @@ function print_type(ast) {
                 return ['auto', filter_join(' ')(params_and_quals) + ' -> ' + ret_left + ret_right];
             return [ret_left, filter_join(' ')(params_and_quals) + ret_right];
         case 'template argument':
-            const argtype = ast.type ? '(' + print_type(ast.type).join('') + ')' : '';
             switch (ast.argkind) {
-                case 'float':
-                case 'double':
-                case 'integral':
-                    return [argtype + ast.value, ''];
-                case 'entity':
-                    if (ast.entity.namekind === 'string')
-                        return ["'string'", ''];
-                    else
-                        return [argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity), ''];
-                case 'empty non-type':
                 case 'empty type':
                 case 'pack separator':
                     return ['', ''];
                 case 'alias':
                     return [print_qualified_name(ast.typename), ''];
+                default:
+                    return [print_template_argument(ast), ''];
             }
     }
 }
