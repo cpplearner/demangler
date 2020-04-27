@@ -375,7 +375,6 @@ export class Demangler {
             })
         };
     }
-    ;
     parse_class_non_type_template_argument() {
         const object_type = this.parse_type();
         const members = this.parse_list(() => this.parse("member of class non-type template argument")({
@@ -386,7 +385,7 @@ export class Demangler {
         return { typekind: 'template argument', argkind: 'class', object_type, members };
     }
     parse_template_argument() {
-        return this.parse("template argument")({
+        return this.parse("non-type template argument")({
             'A': () => {
                 const intval = this.parse_integer();
                 const buf = new DataView(new ArrayBuffer(4));
@@ -400,6 +399,27 @@ export class Demangler {
                 return ({ typekind: 'template argument', argkind: 'double', value: buf.getFloat64(0) });
             },
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
+            'F': () => ({
+                typekind: 'template argument', argkind: 'member object pointer',
+                fieldoffset: this.parse_integer(), vbtableoffset: this.parse_integer()
+            }),
+            'G': () => ({
+                typekind: 'template argument', argkind: 'member object pointer',
+                fieldoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer()
+            }),
+            'H': () => ({
+                typekind: 'template argument', argkind: 'member function pointer',
+                entity: this.parse_mangled(), nvoffset: this.parse_integer()
+            }),
+            'I': () => ({
+                typekind: 'template argument', argkind: 'member function pointer',
+                entity: this.parse_mangled(), nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
+            }),
+            'J': () => ({
+                typekind: 'template argument', argkind: 'member function pointer',
+                entity: this.parse_mangled(), nvoffset: this.parse_integer(),
+                vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
+            }),
             'M': () => ({ argtype: this.parse_type(), ...this.parse_template_argument() }),
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
@@ -490,9 +510,9 @@ export class Demangler {
                 '$': todo
             }),
             '$': () => this.parse("type or template argument", '$')({
-                '$': () => this.parse("type", '$$')({
+                '$': () => this.parse("type or template argument", '$$')({
                     'A': () => this.parse_full_type(),
-                    'B': () => this.parse("type", '$$B')({
+                    'B': () => this.parse("type or template argument", '$$B')({
                         'Y': () => this.parse_array_type(),
                     }),
                     'C': () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
@@ -686,6 +706,9 @@ function print_template_argument(ast) {
                 return "'string'";
             else
                 return argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
+        case 'member function pointer':
+        case 'member object pointer':
+            return argtype + `'${ast.argkind}'`;
         case 'class':
             const members = ast.members.map(print_template_argument).join(', ');
             return print_type(ast.object_type).join('') + '{' + members + '}';
@@ -694,7 +717,11 @@ function print_template_argument(ast) {
             const elements = ast.elements.map(a => print_template_argument(a)).join(', ');
             return `(${left}[]${right})` + '{' + elements + '}';
         case 'empty non-type':
+        case 'empty type':
+        case 'pack separator':
             return '';
+        case 'alias':
+            return print_qualified_name(ast.typename);
     }
 }
 function print_type(ast) {
@@ -733,15 +760,7 @@ function print_type(ast) {
                 return ['auto', filter_join(' ')(params_and_quals) + ' -> ' + ret_left + ret_right];
             return [ret_left, filter_join(' ')(params_and_quals) + ret_right];
         case 'template argument':
-            switch (ast.argkind) {
-                case 'empty type':
-                case 'pack separator':
-                    return ['', ''];
-                case 'alias':
-                    return [print_qualified_name(ast.typename), ''];
-                default:
-                    return [print_template_argument(ast), ''];
-            }
+            return [print_template_argument(ast), ''];
     }
 }
 function print_ast(ast) {
