@@ -69,6 +69,8 @@ import { demangle } from './msvc-demangler.mjs';
     ["??$f@$MUA@@2U1@3H00@@@@@YAHXZ", "int f<A{(int[]){1}}>()"],
     ["??$f@$MUA@@2U1@3$$BY00H3H00@@@@@@@YAHXZ", "int f<A{(int[][1]){(int[]){1}}}>()"],
     ["??$f@$MUA@@2U1@3$$BY100H3$$BY00H3H00@@@@@@@@@YAHXZ", "int f<A{(int[][1][1]){(int[][1]){(int[]){1}}}}>()"],
+    ["??$g@$M$$CBUA@@1??__N2UA@@H0CK@@@$$Z$$CBU1@@@YAHABUA@@@Z", "int g<(const A)&A{(int)42}, const A>(const A &)"],
+    ["??$g@$MPBUA@@1??__N2UA@@H0CK@@@$$Z$$CBU1@@@YAHABUA@@@Z", "int g<(const A *)&A{(int)42}, const A>(const A &)"],
     ["?f@@YAXX_E", "void f() noexcept"],
 ].forEach(([mangled, expected]) => {
     try {
