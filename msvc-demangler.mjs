@@ -430,7 +430,7 @@ export class Demangler {
     parse_type() {
         return this.parse("type")({
             'A': () => ({ typekind: 'reference', typename: '&', pointee_type: this.parse_full_type() }),
-            'B': () => ({ typekind: 'reference', typename: '&', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
+            'B': () => ({ typekind: 'reference', typename: '&', cv: 'volatile', pointee_type: this.parse_full_type() }),
             'C': () => ({ typekind: 'basic', typename: 'signed char' }),
             'D': () => ({ typekind: 'basic', typename: 'char' }),
             'E': () => ({ typekind: 'basic', typename: 'unsigned char' }),
@@ -445,9 +445,9 @@ export class Demangler {
             'N': () => ({ typekind: 'basic', typename: 'double' }),
             'O': () => ({ typekind: 'basic', typename: 'long double' }),
             'P': () => ({ typekind: 'pointer', typename: '*', pointee_type: this.parse_full_type() }),
-            'Q': () => ({ typekind: 'pointer', typename: '*', pointercv: 'const', pointee_type: this.parse_full_type() }),
-            'R': () => ({ typekind: 'pointer', typename: '*', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
-            'S': () => ({ typekind: 'pointer', typename: '*', pointercv: 'const volatile', pointee_type: this.parse_full_type() }),
+            'Q': () => ({ typekind: 'pointer', typename: '*', cv: 'const', pointee_type: this.parse_full_type() }),
+            'R': () => ({ typekind: 'pointer', typename: '*', cv: 'volatile', pointee_type: this.parse_full_type() }),
+            'S': () => ({ typekind: 'pointer', typename: '*', cv: 'const volatile', pointee_type: this.parse_full_type() }),
             'T': () => ({ typekind: 'union', typename: this.parse_qualified_name() }),
             'U': () => ({ typekind: 'struct', typename: this.parse_qualified_name() }),
             'V': () => ({ typekind: 'class', typename: this.parse_qualified_name() }),
@@ -517,7 +517,7 @@ export class Demangler {
                     }),
                     'C': () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
                     'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: this.parse_full_type() }),
-                    'R': () => ({ typekind: 'reference', typename: '&&', pointercv: 'volatile', pointee_type: this.parse_full_type() }),
+                    'R': () => ({ typekind: 'reference', typename: '&&', cv: 'volatile', pointee_type: this.parse_full_type() }),
                     'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
                     'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
                     'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
@@ -743,9 +743,9 @@ function print_type(ast) {
             const class_name = ast.pointee_type.class_name;
             const typename = class_name ? print_qualified_name(class_name) + '::' + ast.typename : ast.typename;
             if (ast.pointee_type.typekind === 'array' || ast.pointee_type.typekind === 'function')
-                return [left + ' (' + filter_join('')([typename, ast.pointercv]), ')' + right];
+                return [left + ' (' + filter_join('')([typename, ast.cv]), ')' + right];
             else
-                return [filter_join(' ')([left, typename, ast.pointercv]), right];
+                return [filter_join(' ')([left, typename, ast.cv]), right];
         case 'array':
             const [elem_left, elem_right] = print_type(ast.element_type);
             const boundstr = ast.bounds.map(bound => `[${bound || ''}]`).join('');
