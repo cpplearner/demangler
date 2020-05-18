@@ -132,6 +132,8 @@ export class Demangler {
         });
         if (name.namekind === 'string')
             throw `error: mangled name '?_C' is not expected to appear here\nsource string: ${this.dump()}`;
+        if (name.namekind === 'template parameter object')
+            throw `error: mangled name '?__N' is not expected to appear here\nsource string: ${this.dump()}`;
         return name;
     }
     parse_unqualified_name_or_mangled() {
@@ -251,6 +253,7 @@ export class Demangler {
                     'K': () => ({ namekind: 'literal', spelling: this.parse_source_name() }),
                     'L': () => ({ namekind: 'operator', spelling: 'operator co_await' }),
                     'M': () => ({ namekind: 'operator', spelling: 'operator<=>' }),
+                    'N': () => ({ kind: 'template parameter object', namekind: 'template parameter object', value: this.parse_template_argument() }),
                 }),
             }),
         });
@@ -611,9 +614,10 @@ export class Demangler {
             }),
             default: () => this.parse_unqualified_name(),
         });
-        if (name.namekind === 'string')
-            return name;
-        return { ...name, scope: this.parse_scope(), ...this.parse_extra_info() };
+        const scope = this.parse_scope();
+        if (name.namekind === 'string' || name.namekind === 'template parameter object')
+            return { ...name, scope };
+        return { ...name, scope, ...this.parse_extra_info() };
     }
     parse_mangled() {
         return this.parse("mangled name")({
@@ -702,8 +706,9 @@ function print_template_argument(ast) {
         case 'entity':
             if (ast.entity.namekind === 'string')
                 return "'string'";
-            else
-                return argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
+            else if (ast.entity.namekind === 'template parameter object')
+                return argtype + (ast.argref ? '' : '&') + print_template_argument(ast.entity.value);
+            return argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
         case 'member function pointer':
         case 'member object pointer':
             return argtype + `'${ast.argkind}'`;
@@ -764,6 +769,8 @@ function print_type(ast) {
 function print_ast(ast) {
     if (ast.namekind === 'string')
         return "'string'";
+    if (ast.namekind === 'template parameter object')
+        return print_template_argument(ast.value);
     const name = print_qualified_name(ast);
     if (!ast.typekind)
         return name;
