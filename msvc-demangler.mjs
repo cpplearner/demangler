@@ -528,9 +528,9 @@ export class Demangler {
         });
     }
     parse_vtable_base() {
-        return this.parse("base class name")({
+        return this.parse("base class path")({
             '@': () => ({}),
-            default: () => ({ base: this.parse_qualified_name() }),
+            default: () => ({ basepath: this.parse_list(() => this.parse_qualified_name()) }),
         });
     }
     parse_vcall_thunk_info() {
@@ -676,8 +676,6 @@ function print_unqualified_name(ast) {
             return `'${ast.specialname}'${print_optional_template_arguments(ast)}`;
         case 'internal':
         case 'rtti':
-            if (ast.base)
-                return `'${ast.nameinfo} for '${print_qualified_name(ast.base)}''`;
             return `'${ast.nameinfo}'${print_optional_template_arguments(ast)}`;
     }
 }
