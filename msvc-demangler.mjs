@@ -309,15 +309,15 @@ export class Demangler {
     parse_calling_convention() {
         return this.parse("calling convention")({
             'A': () => ({ calling_convention: '__cdecl' }),
-            'B': () => ({ calling_convention: '__cdecl', export: '__export' }),
+            'B': () => ({ calling_convention: '__cdecl', saveregs: '__saveregs' }),
             'C': () => ({ calling_convention: '__pascal' }),
-            'D': () => ({ calling_convention: '__pascal', export: '__export' }),
+            'D': () => ({ calling_convention: '__pascal', saveregs: '__saveregs' }),
             'E': () => ({ calling_convention: '__thiscall' }),
-            'F': () => ({ calling_convention: '__thiscall', export: '__export' }),
+            'F': () => ({ calling_convention: '__thiscall', saveregs: '__saveregs' }),
             'G': () => ({ calling_convention: '__stdcall' }),
-            'H': () => ({ calling_convention: '__stdcall', export: '__export' }),
+            'H': () => ({ calling_convention: '__stdcall', saveregs: '__saveregs' }),
             'I': () => ({ calling_convention: '__fastcall' }),
-            'J': () => ({ calling_convention: '__fastcall', export: '__export' }),
+            'J': () => ({ calling_convention: '__fastcall', saveregs: '__saveregs' }),
             'M': () => ({ calling_convention: '__clrcall' }),
             'O': () => ({ calling_convention: '__eabi' }),
             'Q': () => ({ calling_convention: '__vectorcall' }),
@@ -364,19 +364,17 @@ export class Demangler {
         }
     }
     parse_array_member() {
-        return {
-            typekind: 'template argument', argkind: 'array', member_kind: 'array',
-            element_type: this.parse_type(),
-            elements: this.parse_list(() => {
-                const result = this.parse("member array value of class non-type template argument")({
-                    '3': () => this.parse_array_member(),
-                    default: () => this.parse_template_argument(),
-                });
-                return this.parse("end of array element value")({
-                    "@": () => result,
-                });
-            })
-        };
+        const element_type = this.parse_type();
+        const elements = this.parse_list(() => {
+            const result = this.parse("member array value of class non-type template argument")({
+                '3': () => this.parse_array_member(),
+                default: () => this.parse_template_argument(),
+            });
+            return this.parse("end of array element value")({
+                "@": () => result,
+            });
+        });
+        return { typekind: 'template argument', argkind: 'array', member_kind: 'array', element_type, elements };
     }
     parse_class_non_type_template_argument() {
         const object_type = this.parse_type();
@@ -443,7 +441,7 @@ export class Demangler {
             'I': () => ({ typekind: 'basic', typename: 'unsigned int' }),
             'J': () => ({ typekind: 'basic', typename: 'long' }),
             'K': () => ({ typekind: 'basic', typename: 'long long' }),
-            'L': error,
+            'L': () => ({ typekind: 'basic', typename: '__segment' }),
             'M': () => ({ typekind: 'basic', typename: 'float' }),
             'N': () => ({ typekind: 'basic', typename: 'double' }),
             'O': () => ({ typekind: 'basic', typename: 'long double' }),
@@ -585,7 +583,7 @@ export class Demangler {
             '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
             '3': () => ({ kind: 'variable', ...this.parse_type(), ...this.parse_modifiers() }),
             '4': () => ({ kind: 'variable', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
-            '5': todo,
+            '5': () => ({ kind: 'special', scopedepth: this.parse_integer() }),
             '6': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
             '7': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
             '8': () => ({ kind: 'special' }),
@@ -614,8 +612,10 @@ export class Demangler {
             }),
             default: () => this.parse_unqualified_name(),
         });
+        if (name.namekind === 'string')
+            return name;
         const scope = this.parse_scope();
-        if (name.namekind === 'string' || name.namekind === 'template parameter object')
+        if (name.namekind === 'template parameter object')
             return { ...name, scope };
         return { ...name, scope, ...this.parse_extra_info() };
     }
