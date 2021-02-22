@@ -12,8 +12,8 @@ export class Demangler {
     }
     parse(context, prefix = '') {
         return (map) => {
-            let c = this.input[this.index];
-            let call = (f) => {
+            const c = this.input[this.index];
+            const call = (f) => {
                 if (this.index > this.input.length)
                     throw `error: unexpected end of string when demangling ${context}\nsource string: ${this.dump()}`;
                 else if (f === error)
@@ -327,16 +327,16 @@ export class Demangler {
         });
     }
     parse_function_type() {
-        let cc = this.parse_calling_convention();
-        let return_type = this.parse("function return type")({
+        const cc = this.parse_calling_convention();
+        const return_type = this.parse("function return type")({
             '@': () => ({}),
             default: () => ({ return_type: this.parse_type() }),
         });
-        let { params, variadic } = this.parse("function parameter list")({
+        const { params, variadic } = this.parse("function parameter list")({
             'X': () => ({ params: [] }),
             default: () => this.parse_parameter_list(),
         });
-        let except = this.parse("noexcept specification")({
+        const except = this.parse("noexcept specification")({
             'Z': () => ({}),
             '_': () => this.parse("noexcept specification", '_')({
                 'E': () => ({ noexcept: 'noexcept' }),
@@ -345,22 +345,22 @@ export class Demangler {
         return { typekind: 'function', ...cc, ...return_type, params, variadic, ...except };
     }
     parse_array_type() {
-        let dimension = this.parse_integer();
-        let bounds = [...Array(Number(dimension))].map(() => this.parse_integer());
-        let element_type = this.parse_type();
+        const dimension = this.parse_integer();
+        const bounds = [...Array(Number(dimension))].map(() => this.parse_integer());
+        const element_type = this.parse_type();
         return { typekind: 'array', dimension, bounds, element_type };
     }
     parse_full_type() {
         const modifiers = this.parse_modifiers();
-        if (modifiers.member) {
-            if (modifiers.function)
+        switch (`${modifiers.member || 'non-member'} ${modifiers.function || 'non-function'}`) {
+            case 'member function':
                 return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_member_function_type() };
-            return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_type() };
-        }
-        else {
-            if (modifiers.function)
+            case 'member non-function':
+                return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_type() };
+            case 'non-member function':
                 return { ...modifiers, ...this.parse_function_type() };
-            return { ...modifiers, ...this.parse_type() };
+            case 'non-member non-function':
+                return { ...modifiers, ...this.parse_type() };
         }
     }
     parse_array_member() {
@@ -391,13 +391,13 @@ export class Demangler {
                 const intval = this.parse_integer();
                 const buf = new DataView(new ArrayBuffer(4));
                 buf.setUint32(0, Number(intval));
-                return ({ typekind: 'template argument', argkind: 'float', value: buf.getFloat32(0) });
+                return { typekind: 'template argument', argkind: 'float', value: buf.getFloat32(0) };
             },
             'B': () => {
                 const intval = this.parse_integer();
                 const buf = new DataView(new ArrayBuffer(8));
                 buf.setBigUint64(0, intval);
-                return ({ typekind: 'template argument', argkind: 'double', value: buf.getFloat64(0) });
+                return { typekind: 'template argument', argkind: 'double', value: buf.getFloat64(0) };
             },
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
             'F': () => ({
@@ -414,7 +414,7 @@ export class Demangler {
             }),
             'I': () => ({
                 typekind: 'template argument', argkind: 'member function pointer',
-                entity: this.parse_mangled(), nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
+                entity: this.parse_mangled(), nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer()
             }),
             'J': () => ({
                 typekind: 'template argument', argkind: 'member function pointer',
@@ -422,7 +422,19 @@ export class Demangler {
                 vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
             }),
             'M': () => ({ argtype: this.parse_type(), ...this.parse_template_argument() }),
+            'Q': todo,
+            'R': () => {
+                const num = this.parse_integer();
+                const parm_index = num & ~(-1n << 12n);
+                const parm_nesting = (num >> 12n) & ~(-1n << 8n);
+                const parm_cumulative_parent_number = (num >> 20n) & ~(-1n << 10n);
+                return {
+                    typekind: 'template argument', argkind: 'parameter',
+                    parm_index, parm_nesting, parm_cumulative_parent_number
+                };
+            },
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
+            'T': todo,
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '2': () => this.parse_class_non_type_template_argument(),
@@ -521,6 +533,7 @@ export class Demangler {
                     'R': () => ({ typekind: 'reference', typename: '&&', cv: 'volatile', pointee_type: this.parse_full_type() }),
                     'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
                     'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
+                    'W': todo,
                     'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
                     'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
                 }),
@@ -537,7 +550,13 @@ export class Demangler {
     parse_vcall_thunk_info() {
         return this.parse("vcall thunk info")({
             'A': () => ({}),
-            default: todo,
+            'B': todo,
+            'C': todo,
+            'D': todo,
+            'E': todo,
+            'F': todo,
+            'G': todo,
+            'H': todo,
         });
     }
     parse_vtordisp_kind() {
@@ -725,6 +744,10 @@ function print_template_argument(ast) {
             return '';
         case 'alias':
             return print_qualified_name(ast.typename);
+        case 'parameter':
+            if (ast.parm_nesting > 1)
+                return `'T-${ast.parm_nesting}-${ast.parm_index}'`;
+            return `'T${ast.parm_index}'`;
     }
 }
 function print_type(ast) {
@@ -778,5 +801,7 @@ function print_ast(ast) {
     return filter_join(' ')([left, name]) + right;
 }
 export function demangle(input) {
-    return print_ast(new Demangler(input).parse_mangled());
+    const demangler = new Demangler(input);
+    const s = print_ast(demangler.parse_mangled());
+    return s;
 }
