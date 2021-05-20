@@ -381,7 +381,10 @@ export class Demangler {
         const members = this.parse_list(() => this.parse("member of class non-type template argument")({
             '2': () => this.parse_class_non_type_template_argument(),
             '3': () => this.parse_array_member(),
-            default: () => ({ argtype: this.parse_type(), ...this.parse_template_argument() }),
+            default: () => ({
+                typekind: 'template argument', argkind: 'typed',
+                argtype: this.parse_type(), arg: this.parse_template_argument()
+            }),
         }));
         return { typekind: 'template argument', argkind: 'class', object_type, members };
     }
@@ -421,7 +424,10 @@ export class Demangler {
                 entity: this.parse_mangled(), nvoffset: this.parse_integer(),
                 vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
             }),
-            'M': () => ({ argtype: this.parse_type(), ...this.parse_template_argument() }),
+            'M': () => ({
+                typekind: 'template argument', argkind: 'typed',
+                argtype: this.parse_type(), arg: this.parse_template_argument()
+            }),
             'Q': todo,
             'R': () => {
                 const num = this.parse_integer();
@@ -438,6 +444,7 @@ export class Demangler {
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '2': () => this.parse_class_non_type_template_argument(),
+            '3': todo,
             '4': () => {
                 const string = this.parse("string literal member")({
                     '?': () => this.parse("string literal member", '?')({
@@ -458,6 +465,14 @@ export class Demangler {
                     })
                 });
                 return { typekind: 'template argument', argkind: 'string', string };
+            },
+            '5': todo,
+            '6': () => {
+                const object = this.parse_template_argument();
+                const member_name = this.parse_source_name();
+                return this.parse("end of member access")({
+                    '@': () => ({ typekind: 'template argument', argkind: 'member', object, member_name })
+                });
             },
         });
     }
@@ -737,21 +752,25 @@ function print_qualified_name(ast) {
     return scope.concat(print_unqualified_name(ast)).join('::');
 }
 function print_template_argument(ast) {
-    const argtype = ast.argtype ? '(' + print_type(ast.argtype).join('') + ')' : '';
     switch (ast.argkind) {
         case 'float':
         case 'double':
         case 'integral':
-            return argtype + ast.value;
+            return `${ast.value}`;
         case 'entity':
             if (ast.entity.namekind === 'string')
                 return "'string'";
             else if (ast.entity.namekind === 'template parameter object')
-                return argtype + (ast.argref ? '' : '&') + print_template_argument(ast.entity.value);
-            return argtype + (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
+                return (ast.argref ? '' : '&') + print_template_argument(ast.entity.value);
+            return (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
         case 'member function pointer':
         case 'member object pointer':
-            return argtype + `'${ast.argkind}'`;
+            return `'${ast.argkind}'`;
+        case 'typed':
+            const arg = ast.arg;
+            if (arg.argkind === 'class' || arg.argkind === 'array')
+                return print_template_argument(arg);
+            return `(${print_type(ast.argtype).join('')})` + print_template_argument(arg);
         case 'class':
             const members = ast.members.map(print_template_argument).join(', ');
             return print_type(ast.object_type).join('') + '{' + members + '}';
@@ -761,6 +780,8 @@ function print_template_argument(ast) {
             return `(${left}[]${right})` + '{' + elements + '}';
         case 'string':
             return "'string'";
+        case 'member':
+            return print_template_argument(ast.object) + '.' + ast.member_name;
         case 'empty non-type':
         case 'empty type':
         case 'pack separator':

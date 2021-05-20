@@ -74,6 +74,7 @@ import { demangle } from './msvc-demangler.mjs';
     ["??$f@$MUA@@2U1@3$$BY100H3$$BY00H3H00@@@@@@@@@YAHXZ", "int f<A{(int[][1][1]){(int[][1]){(int[]){1}}}}>()"],
     ["??$g@$M$$CBUA@@1??__N2UA@@H0CK@@@$$Z$$CBU1@@@YAHABUA@@@Z", "int g<(const A)&A{(int)42}, const A>(const A &)"],
     ["??$g@$MPBUA@@1??__N2UA@@H0CK@@@$$Z$$CBU1@@@YAHABUA@@@Z", "int g<(const A *)&A{(int)42}, const A>(const A &)"],
+    ["??$f@$MPAH61?q@@3UQ@@Ax@@@@YAHXZ", "int f<(int *)&q.x>()"],
     ["?f@@YAXX_E", "void f() noexcept"],
     ["??_C@_0N@OLAOGCLC@hello?0?5world@", "'string'"],
     ["??_B?1??f@@YAHXZ@51", "[int f()]::'2'::'local static guard'"],
