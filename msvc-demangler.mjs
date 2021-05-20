@@ -438,6 +438,27 @@ export class Demangler {
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '2': () => this.parse_class_non_type_template_argument(),
+            '4': () => {
+                const string = this.parse("string literal member")({
+                    '?': () => this.parse("string literal member", '?')({
+                        '?': () => this.parse("string literal member", '??')({
+                            '_': () => this.parse("string literal member", '??_')({
+                                'C': () => this.parse("string literal member", '??_C')({
+                                    '@': () => this.parse("string literal member", '??_C@')({
+                                        '_': () => {
+                                            const str = this.parse_string_literal_name();
+                                            return this.parse("end of string literal member")({
+                                                '@': () => str
+                                            });
+                                        }
+                                    })
+                                })
+                            })
+                        })
+                    })
+                });
+                return { typekind: 'template argument', argkind: 'string', string };
+            },
         });
     }
     parse_type() {
@@ -738,6 +759,8 @@ function print_template_argument(ast) {
             const [left, right] = print_type(ast.element_type);
             const elements = ast.elements.map(a => print_template_argument(a)).join(', ');
             return `(${left}[]${right})` + '{' + elements + '}';
+        case 'string':
+            return "'string'";
         case 'empty non-type':
         case 'empty type':
         case 'pack separator':
