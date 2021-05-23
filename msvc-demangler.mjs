@@ -444,7 +444,7 @@ export class Demangler {
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '2': () => this.parse_class_non_type_template_argument(),
-            '3': todo,
+            '3': error,
             '4': () => {
                 const string = this.parse("string literal member")({
                     '?': () => this.parse("string literal member", '?')({
@@ -474,6 +474,14 @@ export class Demangler {
                     '@': () => ({ typekind: 'template argument', argkind: 'member', object, member_name })
                 });
             },
+            '7': todo,
+            '8': () => {
+                const scope = this.parse_scope();
+                const member_name = this.parse_source_name();
+                return this.parse("end of pointer-to-member")({
+                    '@': () => ({ typekind: 'template argument', argkind: 'pointer-to-member', scope, member_name }),
+                });
+            }
         });
     }
     parse_type() {
@@ -738,8 +746,8 @@ function print_unqualified_name(ast) {
             return `'${ast.nameinfo}'${print_optional_template_arguments(ast)}`;
     }
 }
-function print_qualified_name(ast) {
-    const scope = [...ast.scope].reverse().map((scope) => {
+function print_scope(ast) {
+    return [...ast].reverse().map((scope) => {
         if (typeof scope === 'bigint')
             return `'${scope}'`;
         else if (typeof scope === 'string')
@@ -748,8 +756,10 @@ function print_qualified_name(ast) {
             return `[${print_ast(scope)}]`;
         else
             return print_unqualified_name(scope);
-    });
-    return scope.concat(print_unqualified_name(ast)).join('::');
+    }).map((s) => s + '::').join('');
+}
+function print_qualified_name(ast) {
+    return print_scope(ast.scope) + print_unqualified_name(ast);
 }
 function print_template_argument(ast) {
     switch (ast.argkind) {
@@ -782,6 +792,8 @@ function print_template_argument(ast) {
             return "'string'";
         case 'member':
             return print_template_argument(ast.object) + '.' + ast.member_name;
+        case 'pointer-to-member':
+            return '&' + print_scope(ast.scope) + ast.member_name;
         case 'empty non-type':
         case 'empty type':
         case 'pack separator':
