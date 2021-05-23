@@ -1,4 +1,4 @@
-// OPTIONS: /std:c++latest
+// OPTIONS: /EHsc /std:c++latest /experimental:newLambdaProcessor
 struct type1 {
     void operator[](int);
     operator void();
@@ -188,6 +188,8 @@ void type1::operator==(int) {}
 void type1::operator!=(int) {}
 
 struct type2 {
+    type2(int = 42);
+    type2(const type2&, int = 42);
     virtual ~type2();
     char x;
 };
@@ -199,9 +201,18 @@ protected:
 struct type4 : virtual type2 {char x[3];};
 struct type5 : type3, type4 {
 private:
+    friend void fn();
     ~type5();
 };
 
+// MANGLED: ??0<lambda_1>@?2??fn@@YAXXZ@QAE@AAY00$$CBUtype2@@@Z
+// DEMANGLED: [void fn()]::'3'::<lambda_1>::<lambda_1>(const type2 (&)[1])
+// MANGLED: ??1<lambda_1>@?2??fn@@YAXXZ@QAE@XZ
+// DEMANGLED: [void fn()]::'3'::<lambda_1>::~<lambda_1>()
+// MANGLED: ??0<lambda_2>@?3??fn@@YAXXZ@QAE@AAY00$$CBUtype5@@ABH@Z
+// DEMANGLED: [void fn()]::'4'::<lambda_2>::<lambda_2>(const type5 (&)[1], const int &)
+// MANGLED: ??1<lambda_2>@?3??fn@@YAXXZ@QAE@XZ
+// DEMANGLED: [void fn()]::'4'::<lambda_2>::~<lambda_2>()
 // MANGLED: ??1type2@@UAE@XZ
 // DEMANGLED: type2::~type2()
 // MANGLED: ??1type3@@MAE@XZ
@@ -215,26 +226,16 @@ private:
 // DEMANGLED: void type5::'vbase destructor'()
 // MANGLED: ??_Etype2@@UAEPAXI@Z
 // DEMANGLED: void * type2::'vector deleting destructor'(unsigned int)
-
-// TODO: default constructor closure
-// TODO: vector constructor iterator
-// TODO: vector vbase constructor iterator
-// TODO: virtual displacement map
-
-// MANGLED: ??_Gtype2@@UAEPAXI@Z
-// DEMANGLED: void * type2::'scalar deleting destructor'(unsigned int)
+// MANGLED: ??_Ftype2@@QAEXXZ
+// DEMANGLED: void type2::'default constructor closure'()
 // MANGLED: ??_Gtype3@@MAEPAXI@Z
 // DEMANGLED: void * type3::'scalar deleting destructor'(unsigned int)
-// MANGLED: ??_Gtype5@@EAEPAXI@Z
-// DEMANGLED: void * type5::'scalar deleting destructor'(unsigned int)
-
-// TODO: eh vector constructor iterator
-// TODO: en vector destructor iterator
-// TODO: eh vector vbase constructor iterator
-// TODO: copy constructor closure
-
-// MANGLED: ??_7type3@@6B@
-// DEMANGLED: type3::'vftable'
+// MANGLED: ??_L@YGXPAXIIP6EX0@Z1@Z
+// DEMANGLED: void 'eh vector constructor iterator'(void *, unsigned int, unsigned int, void (*)(void *), void (*)(void *))
+// MANGLED: ??_M@YGXPAXIIP6EX0@Z@Z
+// DEMANGLED: void 'eh vector destructor iterator'(void *, unsigned int, unsigned int, void (*)(void *))
+// MANGLED: ??_N@YGXPAXIIP6EX0@Z1@Z
+// DEMANGLED: void 'eh vector vbase constructor iterator'(void *, unsigned int, unsigned int, void (*)(void *), void (*)(void *))
 // MANGLED: ??_R0?AUtype3@@@8
 // DEMANGLED: 'RTTI Type Descriptor'
 // MANGLED: ??_R1A@A@3FA@type2@@8
@@ -251,12 +252,31 @@ private:
 // DEMANGLED: type2::'RTTI Class Hierarchy Descriptor'
 // MANGLED: ??_R3type3@@8
 // DEMANGLED: type3::'RTTI Class Hierarchy Descriptor'
+// MANGLED: ??_Otype2@@QAEXAAU0@@Z
+// DEMANGLED: void type2::'copy constructor closure'(type2 &)
+// MANGLED: ??_7type3@@6B@
+// DEMANGLED: type3::'vftable'
+// MANGLED: ??__C@YGXPAX0IIP6EX00@ZP6EX0@Z@Z
+// DEMANGLED: void 'eh vector copy constructor iterator'(void *, void *, unsigned int, unsigned int, void (*)(void *, void *), void (*)(void *))
+// MANGLED: ??__D@YGXPAX0IIP6EX00@ZP6EX0@Z@Z
+// DEMANGLED: void 'eh vector vbase copy constructor iterator'(void *, void *, unsigned int, unsigned int, void (*)(void *, void *), void (*)(void *))
+void fn() {
+    delete[] new type2[1];
+    delete[] new type5[1];
+    {
+        type2 a1[1];
+        [a1] {};
+    }
+    {
+        type5 a2[1];
+        int x{};
+        [a2, x] {};
+    }
+}
+
 type2::~type2() {}
 type3::~type3() {}
 type5::~type5() {}
-
-// TODO: local vftable
-// TODO: local vftable constructor closure
 
 struct type6 {
 protected:
@@ -307,13 +327,12 @@ void type6::operator|=(int) {}
 // DEMANGLED: void type6::operator^=(int)
 void type6::operator^=(int) {}
 
-// TODO: vbtable
-// TODO: vcall
-// TODO: managed vector constructor iterator
-// TODO: managed vector destructor iterator
-// TODO: eh vector copy constructor iterator
-// TODO: eh vector vbase copy constructor iterator
-
+// MANGLED: ??_8type4@@7B@
+// DEMANGLED: type4::'vbtable'
+// MANGLED: ??_8type5@@7Btype3@@@
+// DEMANGLED: type5::'vbtable'
+// MANGLED: ??_8type5@@7Btype4@@@
+// DEMANGLED: type5::'vbtable'
 // MANGLED: ?var1@@3Utype1@@A
 // DEMANGLED: type1 var1
 // MANGLED: ??__Evar1@@YAXXZ
@@ -369,11 +388,6 @@ type1 type7::var5;
 template<class T>
 type1 type7::var6;
 int x = (false ? type7::var6<int> -> ~type1() : void(), 1);
-
-// TODO: vector copy constructor iterator
-// TODO: vector vbase copy constructor iterator
-// TODO: managed vector copy constructor iterator
-// TODO: local static thread guard
 
 // MANGLED: ??__K_a@@YAXPBD@Z
 // DEMANGLED: void operator""_a(const char *)
@@ -759,16 +773,17 @@ f4<type18{type9{.mem2=42}}>();
 }
 
 extern "C" {
-inline type1 f11() {
-    static type1 var38;
-    return var38;
+inline const void* f11() {
+    static const type1 var38;
+    return &var38;
 }
 
 // MANGLED: ??__Fvar38@?1??f11@@9@YAXXZ
 // DEMANGLED: void [f11]::'2'::'dynamic atexit destructor for 'var38''()
-// MANGLED: ?var38@?1??f11@@9@4Utype1@@A
-// DEMANGLED: type1 [f11]::'2'::var38
+// MANGLED: ?var38@?1??f11@@9@4Utype1@@B
+// DEMANGLED: const type1 [f11]::'2'::var38
 // MANGLED: ?$TSS0@?1??f11@@9@4HA
 // DEMANGLED: int [f11]::'2'::$TSS0
 auto var39 = &f11;
+
 }

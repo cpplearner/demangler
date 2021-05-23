@@ -76,3 +76,4 @@ async function test(filename, outname) {
 
 test('test1.cpp', 'test1.asm');
 test('test2.cpp', 'test2.asm');
+test('test3.cpp', 'test3.asm');
