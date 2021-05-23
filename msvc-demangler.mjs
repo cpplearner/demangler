@@ -402,6 +402,15 @@ export class Demangler {
                 buf.setBigUint64(0, intval);
                 return { typekind: 'template argument', argkind: 'double', value: buf.getFloat64(0) };
             },
+            'C': () => {
+                const array = this.parse_template_argument();
+                const index = this.parse("array index")({
+                    '0': () => this.parse_integer(),
+                });
+                return this.parse("end of array element access")({
+                    '@': () => ({ typekind: 'template argument', argkind: 'element', array, index }),
+                });
+            },
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
             'F': () => ({
                 typekind: 'template argument', argkind: 'member object pointer',
@@ -792,6 +801,8 @@ function print_template_argument(ast) {
             return "'string'";
         case 'member':
             return print_template_argument(ast.object) + '.' + ast.member_name;
+        case 'element':
+            return print_template_argument(ast.array) + '[' + ast.index + ']';
         case 'pointer-to-member':
             return '&' + print_scope(ast.scope) + ast.member_name;
         case 'empty non-type':
