@@ -75,7 +75,7 @@ export class Demangler {
         str = str.replace(/\?[A-Z]/g, (m) => `\\x${hex(ord_diff(m[1], 'A') + 0xC1)}`);
         str = str.replace(/\?[0-9]/g, (m) => ",/\\:. \n\t'-"[ord_diff(m[1], '0')]);
         str = str.replace(/\?\$(..)/g, (m, p) => `\\x${p.replace(/./g, (s) => hex(ord_diff(s, 'A')))}`);
-        return { kind: 'string', namekind: 'string', ...wide, length, crc, content: str };
+        return { namekind: 'string', ...wide, length, crc, content: str };
     }
     parse_template_name() {
         const [names_prev_active, types_prev_active] = [this.names.active, this.types.active];
@@ -122,7 +122,7 @@ export class Demangler {
         }));
     }
     parse_unqualified_name() {
-        const name = this.parse("unqualified name")({
+        return this.parse("unqualified name")({
             '?': () => this.parse("unqualified name")({
                 '$': () => this.parse_template_name(),
                 default: () => this.parse_special_name(),
@@ -130,11 +130,6 @@ export class Demangler {
             '0-9': (n) => this.names.stored[this.names.active][n],
             default: () => this.remember_name({ namekind: 'identifier', spelling: this.parse_source_name() }),
         });
-        if (name.namekind === 'string')
-            throw `error: mangled name '?_C' is not expected to appear here\nsource string: ${this.dump()}`;
-        if (name.namekind === 'template parameter object')
-            throw `error: mangled name '?__N' is not expected to appear here\nsource string: ${this.dump()}`;
-        return name;
     }
     parse_unqualified_name_or_mangled() {
         return this.parse("unqualified or mangled name")({
@@ -188,74 +183,76 @@ export class Demangler {
             '7': () => ({ namekind: 'operator', spelling: 'operator!' }),
             '8': () => ({ namekind: 'operator', spelling: 'operator==' }),
             '9': () => ({ namekind: 'operator', spelling: 'operator!=' }),
-            '_': () => this.parse("unqualified name", '?_')({
-                'A': () => ({ namekind: 'internal', nameinfo: 'typeof' }),
-                'B': () => ({ namekind: 'internal', nameinfo: 'local static guard' }),
-                'C': () => this.parse("string literal", '?_C')({
-                    '@': () => this.parse("string literal", '?_C@')({
-                        '_': () => this.parse_string_literal_name()
-                    })
+            '_': () => this.parse_special_name_after_underscore(),
+        });
+    }
+    parse_special_name_after_underscore() {
+        return this.parse("unqualified name", '?_')({
+            'A': () => ({ namekind: 'internal', nameinfo: 'typeof' }),
+            'B': () => ({ namekind: 'internal', nameinfo: 'local static guard' }),
+            'C': error,
+            'D': () => ({ namekind: 'internal', spelling: '__vbaseDtor', nameinfo: 'vbase destructor' }),
+            'E': () => ({ namekind: 'internal', spelling: '__vecDelDtor', nameinfo: 'vector deleting destructor' }),
+            'F': () => ({ namekind: 'internal', spelling: '__dflt_ctor_closure', nameinfo: 'default constructor closure' }),
+            'G': () => ({ namekind: 'internal', spelling: '__delDtor', nameinfo: 'scalar deleting destructor' }),
+            'H': () => ({ namekind: 'internal', spelling: '__vec_ctor', nameinfo: 'vector constructor iterator' }),
+            'I': () => ({ namekind: 'internal', spelling: '__vec_dtor', nameinfo: 'vector destructor iterator' }),
+            'J': () => ({ namekind: 'internal', spelling: '__vec_ctor_vb', nameinfo: 'vector vbase constructor iterator' }),
+            'K': () => ({ namekind: 'internal', nameinfo: 'virtual displacement map' }),
+            'L': () => ({ namekind: 'internal', spelling: '__ehvec_ctor', nameinfo: 'eh vector constructor iterator' }),
+            'M': () => ({ namekind: 'internal', spelling: '__ehvec_dtor', nameinfo: 'eh vector destructor iterator' }),
+            'N': () => ({ namekind: 'internal', spelling: '__ehvec_ctor_vb', nameinfo: 'eh vector vbase constructor iterator' }),
+            'O': () => ({ namekind: 'internal', spelling: '__copy_ctor_closure', nameinfo: 'copy constructor closure' }),
+            'P': todo,
+            'Q': todo,
+            'R': () => this.parse("unqualified name", '?_R')({
+                '0': () => ({ namekind: 'rtti', nameinfo: 'RTTI Type Descriptor', relatedtype: this.parse_type() }),
+                '1': () => ({
+                    namekind: 'rtti', nameinfo: 'RTTI Base Class Descriptor',
+                    nvoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
+                    flags: this.parse_integer(),
                 }),
-                'D': () => ({ namekind: 'internal', spelling: '__vbaseDtor', nameinfo: 'vbase destructor' }),
-                'E': () => ({ namekind: 'internal', spelling: '__vecDelDtor', nameinfo: 'vector deleting destructor' }),
-                'F': () => ({ namekind: 'internal', spelling: '__dflt_ctor_closure', nameinfo: 'default constructor closure' }),
-                'G': () => ({ namekind: 'internal', spelling: '__delDtor', nameinfo: 'scalar deleting destructor' }),
-                'H': () => ({ namekind: 'internal', spelling: '__vec_ctor', nameinfo: 'vector constructor iterator' }),
-                'I': () => ({ namekind: 'internal', spelling: '__vec_dtor', nameinfo: 'vector destructor iterator' }),
-                'J': () => ({ namekind: 'internal', spelling: '__vec_ctor_vb', nameinfo: 'vector vbase constructor iterator' }),
-                'K': () => ({ namekind: 'internal', nameinfo: 'virtual displacement map' }),
-                'L': () => ({ namekind: 'internal', spelling: '__ehvec_ctor', nameinfo: 'eh vector constructor iterator' }),
-                'M': () => ({ namekind: 'internal', spelling: '__ehvec_dtor', nameinfo: 'eh vector destructor iterator' }),
-                'N': () => ({ namekind: 'internal', spelling: '__ehvec_ctor_vb', nameinfo: 'eh vector vbase constructor iterator' }),
-                'O': () => ({ namekind: 'internal', spelling: '__copy_ctor_closure', nameinfo: 'copy constructor closure' }),
-                'P': todo,
-                'Q': todo,
-                'R': () => this.parse("unqualified name", '?_R')({
-                    '0': () => ({ namekind: 'rtti', nameinfo: 'RTTI Type Descriptor', relatedtype: this.parse_type() }),
-                    '1': () => ({
-                        namekind: 'rtti', nameinfo: 'RTTI Base Class Descriptor',
-                        nvoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
-                        flags: this.parse_integer(),
-                    }),
-                    '2': () => ({ namekind: 'rtti', nameinfo: 'RTTI Base Class Array' }),
-                    '3': () => ({ namekind: 'rtti', nameinfo: 'RTTI Class Hierarchy Descriptor' }),
-                    '4': () => ({ namekind: 'rtti', nameinfo: 'RTTI Complete Object Locator' }),
-                }),
-                'S': () => ({ namekind: 'internal', nameinfo: 'local vftable' }),
-                'T': () => ({ namekind: 'internal', spelling: '__local_vftable_ctor_closure', nameinfo: 'local vftable constructor closure' }),
-                'U': () => ({ namekind: 'operator', spelling: 'operator new[]' }),
-                'V': () => ({ namekind: 'operator', spelling: 'operator delete[]' }),
-                'W': todo,
-                'X': () => ({ namekind: 'internal', nameinfo: 'placement delete closure' }),
-                'Y': () => ({ namekind: 'internal', nameinfo: 'placement delete[] closure' }),
-                'Z': todo,
-                '0': () => ({ namekind: 'operator', spelling: 'operator/=' }),
-                '1': () => ({ namekind: 'operator', spelling: 'operator%=' }),
-                '2': () => ({ namekind: 'operator', spelling: 'operator>>=' }),
-                '3': () => ({ namekind: 'operator', spelling: 'operator<<=' }),
-                '4': () => ({ namekind: 'operator', spelling: 'operator&=' }),
-                '5': () => ({ namekind: 'operator', spelling: 'operator|=' }),
-                '6': () => ({ namekind: 'operator', spelling: 'operator^=' }),
-                '7': () => ({ namekind: 'internal', nameinfo: 'vftable' }),
-                '8': () => ({ namekind: 'internal', nameinfo: 'vbtable' }),
-                '9': () => ({ namekind: 'internal', nameinfo: 'vcall' }),
-                '_': () => this.parse("unqualified name", '?__')({
-                    'A': () => ({ namekind: 'internal', spelling: '__man_vec_ctor', nameinfo: 'managed vector constructor iterator' }),
-                    'B': () => ({ namekind: 'internal', spelling: '__man_vec_dtor', nameinfo: 'managed vector destructor iterator' }),
-                    'C': () => ({ namekind: 'internal', spelling: '__ehvec_copy_ctor', nameinfo: 'eh vector copy constructor iterator' }),
-                    'D': () => ({ namekind: 'internal', spelling: '__ehvec_copy_ctor_vb', nameinfo: 'eh vector vbase copy constructor iterator' }),
-                    'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', for: this.parse_unqualified_name_or_mangled() }),
-                    'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', for: this.parse_unqualified_name_or_mangled() }),
-                    'G': () => ({ namekind: 'internal', spelling: '__vec_copy_ctor', nameinfo: 'vector copy constructor iterator' }),
-                    'H': () => ({ namekind: 'internal', spelling: '__vec_copy_ctor_vb', nameinfo: 'vector vbase copy constructor iterator' }),
-                    'I': () => ({ namekind: 'internal', spelling: '__man_vec_copy_ctor', nameinfo: 'managed vector copy constructor iterator' }),
-                    'J': () => ({ namekind: 'internal', nameinfo: 'local static thread guard' }),
-                    'K': () => ({ namekind: 'literal', spelling: this.parse_source_name() }),
-                    'L': () => ({ namekind: 'operator', spelling: 'operator co_await' }),
-                    'M': () => ({ namekind: 'operator', spelling: 'operator<=>' }),
-                    'N': () => ({ kind: 'template parameter object', namekind: 'template parameter object', value: this.parse_template_argument() }),
-                }),
+                '2': () => ({ namekind: 'rtti', nameinfo: 'RTTI Base Class Array' }),
+                '3': () => ({ namekind: 'rtti', nameinfo: 'RTTI Class Hierarchy Descriptor' }),
+                '4': () => ({ namekind: 'rtti', nameinfo: 'RTTI Complete Object Locator' }),
             }),
+            'S': () => ({ namekind: 'internal', nameinfo: 'local vftable' }),
+            'T': () => ({ namekind: 'internal', spelling: '__local_vftable_ctor_closure', nameinfo: 'local vftable constructor closure' }),
+            'U': () => ({ namekind: 'operator', spelling: 'operator new[]' }),
+            'V': () => ({ namekind: 'operator', spelling: 'operator delete[]' }),
+            'W': todo,
+            'X': () => ({ namekind: 'internal', nameinfo: 'placement delete closure' }),
+            'Y': () => ({ namekind: 'internal', nameinfo: 'placement delete[] closure' }),
+            'Z': todo,
+            '0': () => ({ namekind: 'operator', spelling: 'operator/=' }),
+            '1': () => ({ namekind: 'operator', spelling: 'operator%=' }),
+            '2': () => ({ namekind: 'operator', spelling: 'operator>>=' }),
+            '3': () => ({ namekind: 'operator', spelling: 'operator<<=' }),
+            '4': () => ({ namekind: 'operator', spelling: 'operator&=' }),
+            '5': () => ({ namekind: 'operator', spelling: 'operator|=' }),
+            '6': () => ({ namekind: 'operator', spelling: 'operator^=' }),
+            '7': () => ({ namekind: 'internal', nameinfo: 'vftable' }),
+            '8': () => ({ namekind: 'internal', nameinfo: 'vbtable' }),
+            '9': () => ({ namekind: 'internal', nameinfo: 'vcall' }),
+            '_': () => this.parse_special_name_after_two_underscore(),
+        });
+    }
+    parse_special_name_after_two_underscore() {
+        return this.parse("unqualified name", '?__')({
+            'A': () => ({ namekind: 'internal', spelling: '__man_vec_ctor', nameinfo: 'managed vector constructor iterator' }),
+            'B': () => ({ namekind: 'internal', spelling: '__man_vec_dtor', nameinfo: 'managed vector destructor iterator' }),
+            'C': () => ({ namekind: 'internal', spelling: '__ehvec_copy_ctor', nameinfo: 'eh vector copy constructor iterator' }),
+            'D': () => ({ namekind: 'internal', spelling: '__ehvec_copy_ctor_vb', nameinfo: 'eh vector vbase copy constructor iterator' }),
+            'E': () => ({ namekind: 'special', specialname: 'dynamic initializer', for: this.parse_unqualified_name_or_mangled() }),
+            'F': () => ({ namekind: 'special', specialname: 'dynamic atexit destructor', for: this.parse_unqualified_name_or_mangled() }),
+            'G': () => ({ namekind: 'internal', spelling: '__vec_copy_ctor', nameinfo: 'vector copy constructor iterator' }),
+            'H': () => ({ namekind: 'internal', spelling: '__vec_copy_ctor_vb', nameinfo: 'vector vbase copy constructor iterator' }),
+            'I': () => ({ namekind: 'internal', spelling: '__man_vec_copy_ctor', nameinfo: 'managed vector copy constructor iterator' }),
+            'J': () => ({ namekind: 'internal', nameinfo: 'local static thread guard' }),
+            'K': () => ({ namekind: 'literal', spelling: this.parse_source_name() }),
+            'L': () => ({ namekind: 'operator', spelling: 'operator co_await' }),
+            'M': () => ({ namekind: 'operator', spelling: 'operator<=>' }),
+            'N': error,
         });
     }
     parse_qualified_name() {
@@ -371,7 +368,7 @@ export class Demangler {
                 default: () => this.parse_template_argument(),
             });
             return this.parse("end of array element value")({
-                "@": () => result,
+                '@': () => result,
             });
         });
         return { typekind: 'template argument', argkind: 'array', member_kind: 'array', element_type, elements };
@@ -455,25 +452,10 @@ export class Demangler {
             '2': () => this.parse_class_non_type_template_argument(),
             '3': error,
             '4': () => {
-                const string = this.parse("string literal member")({
-                    '?': () => this.parse("string literal member", '?')({
-                        '?': () => this.parse("string literal member", '??')({
-                            '_': () => this.parse("string literal member", '??_')({
-                                'C': () => this.parse("string literal member", '??_C')({
-                                    '@': () => this.parse("string literal member", '??_C@')({
-                                        '_': () => {
-                                            const str = this.parse_string_literal_name();
-                                            return this.parse("end of string literal member")({
-                                                '@': () => str
-                                            });
-                                        }
-                                    })
-                                })
-                            })
-                        })
-                    })
+                const entity = this.parse_mangled();
+                return this.parse("end of string literal member")({
+                    '@': () => ({ typekind: 'template argument', argkind: 'string', entity }),
                 });
-                return { typekind: 'template argument', argkind: 'string', string };
             },
             '5': todo,
             '6': () => {
@@ -505,7 +487,7 @@ export class Demangler {
             'H': () => ({ typekind: 'basic', typename: 'int' }),
             'I': () => ({ typekind: 'basic', typename: 'unsigned int' }),
             'J': () => ({ typekind: 'basic', typename: 'long' }),
-            'K': () => ({ typekind: 'basic', typename: 'long long' }),
+            'K': () => ({ typekind: 'basic', typename: 'unsigned long' }),
             'L': () => ({ typekind: 'basic', typename: '__segment' }),
             'M': () => ({ typekind: 'basic', typename: 'float' }),
             'N': () => ({ typekind: 'basic', typename: 'double' }),
@@ -551,7 +533,7 @@ export class Demangler {
                 'O': todo,
                 'P': () => ({ typekind: 'builtin', typename: 'auto' }),
                 'Q': () => ({ typekind: 'builtin', typename: 'char8_t' }),
-                'R': error,
+                'R': () => ({ typekind: 'builtin', typename: 'unknown-type' }),
                 'S': () => ({ typekind: 'builtin', typename: 'char16_t' }),
                 'T': () => ({ typekind: 'builtin', typename: 'decltype(auto)' }),
                 'U': () => ({ typekind: 'builtin', typename: 'char32_t' }),
@@ -676,20 +658,31 @@ export class Demangler {
             }),
         });
     }
-    parse_mangled_after_question_mark() {
-        const name = this.parse("unqualified name")({
-            '?': () => this.parse("unqualified name")({
-                '$': () => this.parse_template_name(),
-                default: () => this.parse_special_name(),
-            }),
-            default: () => this.parse_unqualified_name(),
-        });
-        if (name.namekind === 'string')
-            return name;
+    parse_scope_and_info() {
         const scope = this.parse_scope();
-        if (name.namekind === 'template parameter object')
-            return { ...name, scope };
-        return { ...name, scope, ...this.parse_extra_info() };
+        const info = this.parse_extra_info();
+        return { scope, ...info };
+    }
+    parse_mangled_after_question_mark() {
+        return this.parse("mangled name")({
+            '?': () => this.parse("mangled name")({
+                '$': () => ({ ...this.parse_template_name(), ...this.parse_scope_and_info() }),
+                '_': () => this.parse("mangled name")({
+                    'C': () => this.parse("string literal", '?_C')({
+                        '@': () => this.parse("string literal", '?_C@')({
+                            '_': () => this.parse_string_literal_name()
+                        })
+                    }),
+                    '_': () => this.parse("mangled name")({
+                        'N': () => ({ namekind: 'template parameter object', value: this.parse_template_argument(), scope: this.parse_scope() }),
+                        default: () => ({ ...this.parse_special_name_after_two_underscore(), ...this.parse_scope_and_info() }),
+                    }),
+                    default: () => ({ ...this.parse_special_name_after_underscore(), ...this.parse_scope_and_info() }),
+                }),
+                default: () => ({ ...this.parse_special_name(), ...this.parse_scope_and_info() }),
+            }),
+            default: () => ({ ...this.parse_unqualified_name(), ...this.parse_scope_and_info() }),
+        });
     }
     parse_mangled() {
         return this.parse("mangled name")({
@@ -776,19 +769,23 @@ function print_template_argument(ast) {
         case 'double':
         case 'integral':
             return `${ast.value}`;
+        case 'string':
         case 'entity':
+        case 'member function pointer':
+            const addr = ast.argkind === 'member function pointer' || (ast.argkind === 'entity' && !ast.argref) ? '&' : '';
             if (ast.entity.namekind === 'string')
                 return "'string'";
             else if (ast.entity.namekind === 'template parameter object')
-                return (ast.argref ? '' : '&') + print_template_argument(ast.entity.value);
-            return (ast.argref ? '' : '&') + print_qualified_name(ast.entity);
-        case 'member function pointer':
+                return addr + print_template_argument(ast.entity.value);
+            return addr + print_qualified_name(ast.entity);
         case 'member object pointer':
             return `'${ast.argkind}'`;
         case 'typed':
             const arg = ast.arg;
             if (arg.argkind === 'class' || arg.argkind === 'array')
                 return print_template_argument(arg);
+            if (arg.argkind === 'empty non-type')
+                return '';
             return `(${print_type(ast.argtype).join('')})` + print_template_argument(arg);
         case 'class':
             const members = ast.members.map(print_template_argument).join(', ');
@@ -797,8 +794,6 @@ function print_template_argument(ast) {
             const [left, right] = print_type(ast.element_type);
             const elements = ast.elements.map(a => print_template_argument(a)).join(', ');
             return `(${left}[]${right})` + '{' + elements + '}';
-        case 'string':
-            return "'string'";
         case 'member':
             return print_template_argument(ast.object) + '.' + ast.member_name;
         case 'element':
