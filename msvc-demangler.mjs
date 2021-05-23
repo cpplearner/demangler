@@ -385,6 +385,12 @@ export class Demangler {
         }));
         return { typekind: 'template argument', argkind: 'class', object_type, members };
     }
+    parse_optional_entity() {
+        return this.parse("optional entity")({
+            '?': () => ({ entity: this.parse_mangled_after_question_mark() }),
+            default: () => ({}),
+        });
+    }
     parse_template_argument() {
         return this.parse("non-type template argument")({
             'A': () => {
@@ -419,15 +425,15 @@ export class Demangler {
             }),
             'H': () => ({
                 typekind: 'template argument', argkind: 'member function pointer',
-                entity: this.parse_mangled(), nvoffset: this.parse_integer()
+                ...this.parse_optional_entity(), nvoffset: this.parse_integer()
             }),
             'I': () => ({
                 typekind: 'template argument', argkind: 'member function pointer',
-                entity: this.parse_mangled(), nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer()
+                ...this.parse_optional_entity(), nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer()
             }),
             'J': () => ({
                 typekind: 'template argument', argkind: 'member function pointer',
-                entity: this.parse_mangled(), nvoffset: this.parse_integer(),
+                ...this.parse_optional_entity(), nvoffset: this.parse_integer(),
                 vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
             }),
             'M': () => ({
@@ -771,14 +777,14 @@ function print_template_argument(ast) {
             return `${ast.value}`;
         case 'string':
         case 'entity':
-        case 'member function pointer':
-            const addr = ast.argkind === 'member function pointer' || (ast.argkind === 'entity' && !ast.argref) ? '&' : '';
+            const addr = ast.argkind === 'entity' && !ast.argref ? '&' : '';
             if (ast.entity.namekind === 'string')
                 return "'string'";
             else if (ast.entity.namekind === 'template parameter object')
                 return addr + print_template_argument(ast.entity.value);
             return addr + print_qualified_name(ast.entity);
         case 'member object pointer':
+        case 'member function pointer':
             return `'${ast.argkind}'`;
         case 'typed':
             const arg = ast.arg;
