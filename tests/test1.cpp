@@ -752,6 +752,10 @@ f4<type18<int[2][1]>{1}>();
 // DEMANGLED: void f4<type18<const char *>{(const char *)'string'}>()
 f4<type18{"foo"}>();
 
+// MANGLED: ??$f4@$MU?$type18@PAH@@2U1@PAH56E?var25@@3Ttype9@@Amem1@@@@@@YAXXZ
+// DEMANGLED: void f4<type18<int *>{(int *)&var25.mem1}>()
+f4<type18{&var25.mem1}>();
+
 // MANGLED: ??$f4@$MPAY110H61?var37@@3U?$type18@$$BY110H@@At@@@@YAXXZ
 // DEMANGLED: void f4<(int (*)[2][1])&var37.t>()
 f4<&var37.t>();
