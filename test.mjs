@@ -87,8 +87,6 @@ async function get_all_testcases() {
     ];
     const testfiles = await readdir('tests').then(files => files.filter(name => name.endsWith('.cpp')));
 
-    const testfile1 = await read_testcase('tests/test1.cpp');
-    const testfile2 = await read_testcase('tests/test2.cpp');
     return old_testcase.concat(...await Promise.all(testfiles.map(name => read_testcase('tests/' + name))));
 }
 

@@ -764,10 +764,12 @@ f4<&var37.t[1]>();
 // DEMANGLED: void f4<(int *)&var37.t[1][0]>()
 f4<&var37.t[1][0]>();
 
-// TODO MANGLED: ??$f4@$MU?$type18@Ttype9@@@@2U1@7Ttype9@@mem1@0CK@@@@@YAXXZ
+// MANGLED: ??$f4@$MU?$type18@Ttype9@@@@2U1@7Ttype9@@mem1@0CK@@@@@YAXXZ
+// DEMANGLED: void f4<type18<type9>{type9{.mem1=42}}>()
 f4<type18{type9{42}}>();
 
-// TODO MANGLED: ??$f4@$MU?$type18@Ttype9@@@@2U1@7Ttype9@@mem2@0CK@@@@@YAXXZ
+// MANGLED: ??$f4@$MU?$type18@Ttype9@@@@2U1@7Ttype9@@mem2@0CK@@@@@YAXXZ
+// DEMANGLED: void f4<type18<type9>{type9{.mem2=42}}>()
 f4<type18{type9{.mem2=42}}>();
 
 }

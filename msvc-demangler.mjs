@@ -373,11 +373,25 @@ export class Demangler {
         });
         return { typekind: 'template argument', argkind: 'array', member_kind: 'array', element_type, elements };
     }
+    parse_union_non_type_template_argument() {
+        const object_type = this.parse_type();
+        return this.parse('member of union non-type template argument')({
+            '@': () => ({ typekind: 'template argument', argkind: 'union', object_type }),
+            default: () => {
+                const member_name = this.parse_source_name();
+                const value = this.parse_template_argument();
+                return this.parse('end of union non-type template argument')({
+                    '@': () => ({ typekind: 'template argument', argkind: 'union', object_type, member_name, value }),
+                });
+            },
+        });
+    }
     parse_class_non_type_template_argument() {
         const object_type = this.parse_type();
         const members = this.parse_list(() => this.parse("member of class non-type template argument")({
             '2': () => this.parse_class_non_type_template_argument(),
             '3': () => this.parse_array_member(),
+            '7': () => this.parse_union_non_type_template_argument(),
             default: () => ({
                 typekind: 'template argument', argkind: 'typed',
                 argtype: this.parse_type(), arg: this.parse_template_argument()
@@ -471,7 +485,7 @@ export class Demangler {
                     '@': () => ({ typekind: 'template argument', argkind: 'member', object, member_name })
                 });
             },
-            '7': todo,
+            '7': () => this.parse_union_non_type_template_argument(),
             '8': () => {
                 const scope = this.parse_scope();
                 const member_name = this.parse_source_name();
@@ -788,7 +802,7 @@ function print_template_argument(ast) {
             return `'${ast.argkind}'`;
         case 'typed':
             const arg = ast.arg;
-            if (arg.argkind === 'class' || arg.argkind === 'array')
+            if (arg.argkind === 'class' || arg.argkind === 'array' || arg.argkind === 'union')
                 return print_template_argument(arg);
             if (arg.argkind === 'empty non-type')
                 return '';
@@ -800,6 +814,12 @@ function print_template_argument(ast) {
             const [left, right] = print_type(ast.element_type);
             const elements = ast.elements.map(a => print_template_argument(a)).join(', ');
             return `(${left}[]${right})` + '{' + elements + '}';
+        case 'union':
+            const union_type = print_type(ast.object_type).join('');
+            const value = ast.value ? print_template_argument(ast.value) : '';
+            if (ast.member_name)
+                return union_type + `{.${ast.member_name}=${value}}`;
+            return union_type + '{}';
         case 'member':
             return print_template_argument(ast.object) + '.' + ast.member_name;
         case 'element':
