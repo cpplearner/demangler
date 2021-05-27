@@ -477,7 +477,12 @@ export class Demangler {
                     '@': () => ({ typekind: 'template argument', argkind: 'string', entity }),
                 });
             },
-            '5': todo,
+            '5': () => {
+                const object = this.parse_template_argument();
+                return this.parse("end of address")({
+                    '@': () => ({ typekind: 'template argument', argkind: 'address', object }),
+                });
+            },
             '6': () => {
                 const object = this.parse_template_argument();
                 const member_name = this.parse_source_name();
@@ -815,15 +820,14 @@ function print_template_argument(ast) {
             const elements = ast.elements.map(a => print_template_argument(a)).join(', ');
             return `(${left}[]${right})` + '{' + elements + '}';
         case 'union':
-            const union_type = print_type(ast.object_type).join('');
-            const value = ast.value ? print_template_argument(ast.value) : '';
-            if (ast.member_name)
-                return union_type + `{.${ast.member_name}=${value}}`;
-            return union_type + '{}';
+            const variant = ast.value ? `.${ast.member_name}=${print_template_argument(ast.value)}` : '';
+            return print_type(ast.object_type).join('') + '{' + variant + '}';
         case 'member':
             return print_template_argument(ast.object) + '.' + ast.member_name;
         case 'element':
             return print_template_argument(ast.array) + '[' + ast.index + ']';
+        case 'address':
+            return '&' + print_template_argument(ast.object);
         case 'pointer-to-member':
             return '&' + print_scope(ast.scope) + ast.member_name;
         case 'empty non-type':
