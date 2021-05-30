@@ -657,11 +657,11 @@ export class Demangler {
             'X': () => ({ kind: 'thunk', access: 'public', far: 'far', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
             'Y': () => ({ kind: 'function', ...this.parse_function_type() }),
             'Z': () => ({ kind: 'function', far: 'far', ...this.parse_function_type() }),
-            '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
-            '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
-            '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
-            '3': () => ({ kind: 'variable', ...this.parse_type(), ...this.parse_modifiers() }),
-            '4': () => ({ kind: 'variable', specifier: 'static', ...this.parse_type(), ...this.parse_modifiers() }),
+            '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
+            '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
+            '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
+            '3': () => ({ kind: 'variable', ...this.parse_type(), varcv: this.parse_modifiers() }),
+            '4': () => ({ kind: 'variable', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
             '5': () => ({ kind: 'special', scopedepth: this.parse_integer() }),
             '6': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
             '7': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
@@ -890,7 +890,8 @@ function print_ast(ast) {
     if (!ast.typekind)
         return name;
     const [left, right] = print_type(ast);
-    return filter_join(' ')([left, name]) + right;
+    const varcv = ast.kind === 'variable' && ast.typekind !== 'pointer' && ast.typekind !== 'reference' ? ast.varcv.cv : '';
+    return filter_join(' ')([varcv, left, name]) + right;
 }
 export function demangle(input) {
     const demangler = new Demangler(input);

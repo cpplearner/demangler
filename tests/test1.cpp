@@ -333,13 +333,13 @@ void type6::operator^=(int) {}
 // DEMANGLED: type5::'vbtable'
 // MANGLED: ??_8type5@@7Btype4@@@
 // DEMANGLED: type5::'vbtable'
-// MANGLED: ?var1@@3Utype1@@A
-// DEMANGLED: type1 var1
+// MANGLED: ?var1@@3Utype1@@B
+// DEMANGLED: const type1 var1
 // MANGLED: ??__Evar1@@YAXXZ
 // DEMANGLED: void 'dynamic initializer for 'var1''()
 // MANGLED: ??__Fvar1@@YAXXZ
 // DEMANGLED: void 'dynamic atexit destructor for 'var1''()
-inline type1 var1;
+inline const type1 var1;
 
 namespace ns1 {
 // MANGLED: ?var2@ns1@@3Utype1@@A
@@ -356,7 +356,7 @@ type1 var3;
 // MANGLED: ??$var3@X@ns1@@3Utype1@@A
 // DEMANGLED: type1 ns1::var3<void>
 // MANGLED: ?var4@ns1@@3ABUtype1@@B
-// DEMANGLED: const type1 & const ns1::var4
+// DEMANGLED: const type1 & ns1::var4
 // MANGLED: ??__E?$var3@X@ns1@@YAXXZ
 // DEMANGLED: void ns1::'dynamic initializer for 'var3<void>''()
 // MANGLED: ??__F?$var3@X@ns1@@YAXXZ
@@ -404,7 +404,7 @@ void operator<=>(type1, type1) {}
 template<type7 arg> auto& f() { return arg; }
 
 // MANGLED: ?var7@@3PBVtype7@@B
-// DEMANGLED: const type7 * const var7
+// DEMANGLED: const type7 * var7
 // MANGLED: ??$f@$2Vtype7@@@@@YAAA_PXZ
 // DEMANGLED: auto & f<type7{}>()
 // MANGLED: ??__N2Vtype7@@@@
@@ -424,7 +424,7 @@ struct type8 {
 };
 
 // MANGLED: ?$S1@@3ABUtype8@@B
-// DEMANGLED: const type8 & const $S1
+// DEMANGLED: const type8 & $S1
 const auto & [s1, s2] = type8{};
 
 // MANGLED: ?f@type8@@QGAEXXZ
