@@ -1,11 +1,13 @@
 let error = () => { throw "error: cannot demangle"; };
 let todo = () => { throw "sorry: unimplemented demangling"; };
 export class Demangler {
+    input;
+    index;
+    names = { stored: [[]], active: 0 };
+    types = { stored: [[]], active: 0 };
     constructor(input, index = 0) {
         this.input = input;
         this.index = index;
-        this.names = { stored: [[]], active: 0 };
-        this.types = { stored: [[]], active: 0 };
     }
     dump() {
         return `${this.input.slice(0, this.index)} | ${this.input[this.index]} | ${this.input.slice(this.index + 1)}`;
@@ -258,17 +260,28 @@ export class Demangler {
     parse_qualified_name() {
         return { ...this.parse_unqualified_name(), scope: this.parse_scope() };
     }
-    parse_modifiers() {
+    parse_optional_modifiers() {
         return this.parse("type qualifier")({
+            'E': () => ({ ptr64: '__ptr64', ...this.parse_optional_modifiers() }),
+            'F': () => ({ unaligned: '__unaligned', ...this.parse_optional_modifiers() }),
+            'G': () => ({ refqual: '&', ...this.parse_optional_modifiers() }),
+            'H': () => ({ refqual: '&&', ...this.parse_optional_modifiers() }),
+            'I': () => ({ restrict: '__restrict', ...this.parse_optional_modifiers() }),
+            default: () => ({}),
+        });
+    }
+    parse_modifiers() {
+        const optional_modifiers = this.parse_optional_modifiers();
+        const modifiers = this.parse("type qualifier")({
             'A': () => ({}),
             'B': () => ({ cv: 'const' }),
             'C': () => ({ cv: 'volatile' }),
             'D': () => ({ cv: 'const volatile' }),
-            'E': () => ({ ptr64: '__ptr64', ...this.parse_modifiers() }),
-            'F': () => ({ unaligned: '__unaligned', ...this.parse_modifiers() }),
-            'G': () => ({ refqual: '&', ...this.parse_modifiers() }),
-            'H': () => ({ refqual: '&&', ...this.parse_modifiers() }),
-            'I': () => ({ restrict: '__restrict', ...this.parse_modifiers() }),
+            'E': () => ({ format: 'far' }),
+            'F': () => ({ format: 'far', cv: 'const' }),
+            'G': () => ({ format: 'far', cv: 'volatile' }),
+            'H': () => ({ format: 'far', cv: 'const volatile' }),
+            'I': () => ({ format: 'huge' }),
             'J': () => ({ format: 'huge', cv: 'const' }),
             'K': () => ({ format: 'huge', cv: 'volatile' }),
             'L': () => ({ format: 'huge', cv: 'const volatile' }),
@@ -276,29 +289,9 @@ export class Demangler {
             'N': todo,
             'O': todo,
             'P': todo,
-            'Q': () => ({ member: 'member' }),
-            'R': () => ({ cv: 'const', member: 'member' }),
-            'S': () => ({ cv: 'volatile', member: 'member' }),
-            'T': () => ({ cv: 'const volatile', member: 'member' }),
-            'U': () => ({ format: 'far', member: 'member' }),
-            'V': () => ({ format: 'far', cv: 'const', member: 'member' }),
-            'W': () => ({ format: 'far', cv: 'volatile', member: 'member' }),
-            'X': () => ({ format: 'far', cv: 'const volatile', member: 'member' }),
-            'Y': () => ({ format: 'huge', member: 'member' }),
-            'Z': () => ({ format: 'huge', cv: 'const', member: 'member' }),
-            '0': () => ({ format: 'huge', cv: 'volatile', member: 'member' }),
-            '1': () => ({ format: 'huge', cv: 'const volatile', member: 'member' }),
-            '2': todo,
-            '3': todo,
-            '4': todo,
-            '5': todo,
-            '6': () => ({ function: 'function' }),
-            '7': () => ({ format: 'far', function: 'function' }),
-            '8': () => ({ member: 'member', function: 'function' }),
-            '9': () => ({ format: 'far', member: 'member', function: 'function' }),
-            '_': todo,
-            '$': todo,
+            default: error,
         });
+        return { ...optional_modifiers, ...modifiers };
     }
     parse_member_function_type() {
         return { ...this.parse_modifiers(), ...this.parse_function_type() };
@@ -320,7 +313,7 @@ export class Demangler {
             'Q': () => ({ calling_convention: '__vectorcall' }),
             'S': () => ({ calling_convention: '__swift_1' }),
             'U': () => ({ calling_convention: '__swift_2' }),
-            'W': () => ({ calling_convention: '__regcall' }),
+            'w': () => ({ calling_convention: '__regcall' }),
         });
     }
     parse_function_type() {
@@ -348,17 +341,31 @@ export class Demangler {
         return { typekind: 'array', dimension, bounds, element_type };
     }
     parse_full_type() {
-        const modifiers = this.parse_modifiers();
-        switch (`${modifiers.member || 'non-member'} ${modifiers.function || 'non-function'}`) {
-            case 'member function':
-                return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_member_function_type() };
-            case 'member non-function':
-                return { ...modifiers, class_name: this.parse_qualified_name(), ...this.parse_type() };
-            case 'non-member function':
-                return { ...modifiers, ...this.parse_function_type() };
-            case 'non-member non-function':
-                return { ...modifiers, ...this.parse_type() };
-        }
+        const optional_modifiers = this.parse_optional_modifiers();
+        const type = this.parse("type")({
+            'Q': () => ({ class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'R': () => ({ cv: 'const', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'S': () => ({ cv: 'volatile', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'T': () => ({ cv: 'const volatile', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'U': () => ({ format: 'far', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'V': () => ({ format: 'far', cv: 'const', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'W': () => ({ format: 'far', cv: 'volatile', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'X': () => ({ format: 'far', cv: 'const volatile', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'Y': () => ({ format: 'huge', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            'Z': () => ({ format: 'huge', cv: 'const', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            '0': () => ({ format: 'huge', cv: 'volatile', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            '1': () => ({ format: 'huge', cv: 'const volatile', class_name: this.parse_qualified_name(), ...this.parse_type() }),
+            '2': todo,
+            '3': todo,
+            '4': todo,
+            '5': todo,
+            '6': () => ({ ...this.parse_function_type() }),
+            '7': () => ({ format: 'far', ...this.parse_function_type() }),
+            '8': () => ({ class_name: this.parse_qualified_name(), ...this.parse_member_function_type() }),
+            '9': () => ({ format: 'far', class_name: this.parse_qualified_name(), ...this.parse_member_function_type() }),
+            default: () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
+        });
+        return { ...optional_modifiers, ...type };
     }
     parse_array_member() {
         const element_type = this.parse_type();
@@ -657,11 +664,11 @@ export class Demangler {
             'X': () => ({ kind: 'thunk', access: 'public', far: 'far', adjustment: this.parse_integer(), ...this.parse_member_function_type() }),
             'Y': () => ({ kind: 'function', ...this.parse_function_type() }),
             'Z': () => ({ kind: 'function', far: 'far', ...this.parse_function_type() }),
-            '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
-            '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
-            '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
-            '3': () => ({ kind: 'variable', ...this.parse_type(), varcv: this.parse_modifiers() }),
-            '4': () => ({ kind: 'variable', specifier: 'static', ...this.parse_type(), varcv: this.parse_modifiers() }),
+            '0': () => ({ kind: 'variable', access: 'private', specifier: 'static', ...this.parse_type(), varqual: this.parse_modifiers() }),
+            '1': () => ({ kind: 'variable', access: 'protected', specifier: 'static', ...this.parse_type(), varqual: this.parse_modifiers() }),
+            '2': () => ({ kind: 'variable', access: 'public', specifier: 'static', ...this.parse_type(), varqual: this.parse_modifiers() }),
+            '3': () => ({ kind: 'variable', ...this.parse_type(), varqual: this.parse_modifiers() }),
+            '4': () => ({ kind: 'variable', specifier: 'static', ...this.parse_type(), varqual: this.parse_modifiers() }),
             '5': () => ({ kind: 'special', scopedepth: this.parse_integer() }),
             '6': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
             '7': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
@@ -890,7 +897,7 @@ function print_ast(ast) {
     if (!ast.typekind)
         return name;
     const [left, right] = print_type(ast);
-    const varcv = ast.kind === 'variable' && ast.typekind !== 'pointer' && ast.typekind !== 'reference' ? ast.varcv.cv : '';
+    const varcv = ast.kind === 'variable' && ast.typekind !== 'pointer' && ast.typekind !== 'reference' ? ast.varqual.cv : '';
     return filter_join(' ')([varcv, left, name]) + right;
 }
 export function demangle(input) {
