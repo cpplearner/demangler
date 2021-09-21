@@ -1,6 +1,0 @@
-language: node_js
-git:
-    depth: 1
-node_js:
-- 'node'
-script: node test.mjs
