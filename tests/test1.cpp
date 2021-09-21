@@ -809,3 +809,10 @@ inline const void* f11() {
 auto var39 = &f11;
 
 }
+
+// MANGLED: ?var40@@3PM0HM0
+// DEMANGLED: int * var40
+int __based(void)* var40;
+// MANGLED: ?var41@@3PN2var21@@HN21@
+// DEMANGLED: const int * var41
+const int __based(var21)* var41;

@@ -270,6 +270,12 @@ export class Demangler {
             default: () => ({}),
         });
     }
+    parse_based_modifier() {
+        return this.parse("based modifier")({
+            '0': () => 'void',
+            '2': () => this.parse_qualified_name(),
+        });
+    }
     parse_modifiers() {
         const optional_modifiers = this.parse_optional_modifiers();
         const modifiers = this.parse("type qualifier")({
@@ -285,10 +291,10 @@ export class Demangler {
             'J': () => ({ format: 'huge', cv: 'const' }),
             'K': () => ({ format: 'huge', cv: 'volatile' }),
             'L': () => ({ format: 'huge', cv: 'const volatile' }),
-            'M': todo,
-            'N': todo,
-            'O': todo,
-            'P': todo,
+            'M': () => ({ based: this.parse_based_modifier() }),
+            'N': () => ({ cv: 'const', based: this.parse_based_modifier() }),
+            'O': () => ({ cv: 'volatile', based: this.parse_based_modifier() }),
+            'P': () => ({ cv: 'const volatile', based: this.parse_based_modifier() }),
             default: error,
         });
         return { ...optional_modifiers, ...modifiers };
