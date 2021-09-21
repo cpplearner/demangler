@@ -95,16 +95,16 @@ export class Demangler {
     parse_parameter_list() {
         const params = [];
         while (this.input[this.index] !== '@' && this.input[this.index] !== 'Z') {
-            const type = this.parse("parameter type")({
+            const paramtype = this.parse("parameter type")({
                 '0-9': (n) => this.types.stored[this.types.active][n],
                 default: () => {
                     const type = this.parse_type();
                     if (type.typekind !== 'basic')
                         this.types.stored[this.types.active].push(type);
                     return type;
-                }
+                },
             });
-            params.push(type);
+            params.push(paramtype);
         }
         const variadic = this.parse("end of function parameter list")({
             '@': () => ({}),
@@ -140,11 +140,11 @@ export class Demangler {
                 default: () => {
                     const mangled_name = this.parse_mangled_after_question_mark();
                     return this.parse("end of inner mangled name")({
-                        '@': () => mangled_name
+                        '@': () => mangled_name,
                     });
                 }
             }),
-            default: () => this.parse_unqualified_name()
+            default: () => this.parse_unqualified_name(),
         });
     }
     parse_special_name() {
@@ -370,10 +370,7 @@ export class Demangler {
     parse_array_member() {
         const element_type = this.parse_type();
         const elements = this.parse_list(() => {
-            const result = this.parse("member array value of class non-type template argument")({
-                '3': () => this.parse_array_member(),
-                default: () => this.parse_template_argument(),
-            });
+            const result = this.parse_template_argument();
             return this.parse("end of array element value")({
                 '@': () => result,
             });
@@ -428,9 +425,7 @@ export class Demangler {
             },
             'C': () => {
                 const array = this.parse_template_argument();
-                const index = this.parse("array index")({
-                    '0': () => this.parse_integer(),
-                });
+                const index = this.parse_template_argument();
                 return this.parse("end of array element access")({
                     '@': () => ({ typekind: 'template argument', argkind: 'element', array, index }),
                 });
@@ -445,17 +440,16 @@ export class Demangler {
                 fieldoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer()
             }),
             'H': () => ({
-                typekind: 'template argument', argkind: 'member function pointer',
-                ...this.parse_optional_entity(), nvoffset: this.parse_integer()
+                typekind: 'template argument', argkind: 'member function pointer', ...this.parse_optional_entity(),
+                nvoffset: this.parse_integer()
             }),
             'I': () => ({
-                typekind: 'template argument', argkind: 'member function pointer',
-                ...this.parse_optional_entity(), nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer()
+                typekind: 'template argument', argkind: 'member function pointer', ...this.parse_optional_entity(),
+                nvoffset: this.parse_integer(), vbtableoffset: this.parse_integer()
             }),
             'J': () => ({
-                typekind: 'template argument', argkind: 'member function pointer',
-                ...this.parse_optional_entity(), nvoffset: this.parse_integer(),
-                vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
+                typekind: 'template argument', argkind: 'member function pointer', ...this.parse_optional_entity(),
+                nvoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
             }),
             'M': () => ({
                 typekind: 'template argument', argkind: 'typed',
@@ -477,7 +471,7 @@ export class Demangler {
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '2': () => this.parse_class_non_type_template_argument(),
-            '3': error,
+            '3': () => this.parse_array_member(),
             '4': () => {
                 const entity = this.parse_mangled();
                 return this.parse("end of string literal member")({
@@ -504,7 +498,7 @@ export class Demangler {
                 return this.parse("end of pointer-to-member")({
                     '@': () => ({ typekind: 'template argument', argkind: 'pointer-to-member', scope, member_name }),
                 });
-            }
+            },
         });
     }
     parse_type() {
@@ -587,7 +581,7 @@ export class Demangler {
                 '_': () => this.parse('type', '__')({
                     'R': () => ({ typekind: 'builtin', typename: 'unknown-type' }),
                 }),
-                '$': todo
+                '$': todo,
             }),
             '$': () => this.parse("type or template argument", '$')({
                 '$': () => this.parse("type or template argument", '$$')({
@@ -679,13 +673,12 @@ export class Demangler {
                 'B': () => ({ kind: 'thunk', callindex: this.parse_integer(), ...this.parse_vcall_thunk_info(), ...this.parse_calling_convention() }),
                 'R': () => ({
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
-                    vbptrdisp: this.parse_integer(), vbindex: this.parse_integer(), vtordisp: this.parse_integer(), adjustment: this.parse_integer(),
-                    ...this.parse_member_function_type(),
+                    vbptrdisp: this.parse_integer(), vbindex: this.parse_integer(),
+                    vtordisp: this.parse_integer(), adjustment: this.parse_integer(), ...this.parse_member_function_type()
                 }),
                 default: () => ({
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
-                    vtordisp: this.parse_integer(), adjustment: this.parse_integer(),
-                    ...this.parse_member_function_type()
+                    vtordisp: this.parse_integer(), adjustment: this.parse_integer(), ...this.parse_member_function_type()
                 }),
             }),
         });
@@ -724,6 +717,7 @@ export class Demangler {
     }
 }
 let filter_join = (sep) => (arr) => arr.filter(x => x).join(sep);
+let quoted = (str) => `'${str}'`;
 function print_unqualified_name(ast) {
     function print_optional_template_arguments(ast) {
         return ast.template_arguments ? `<${filter_join(', ')(ast.template_arguments.map(t => print_type(t).join('')))}>` : '';
@@ -745,47 +739,37 @@ function print_unqualified_name(ast) {
                     break;
                 }
                 case 'constructor': {
-                    if (ast.scope) {
-                        const enclosing_class_name_obj = ast.scope[0];
-                        if (enclosing_class_name_obj) {
-                            const enclosing_class_name = enclosing_class_name_obj.spelling;
-                            if (enclosing_class_name)
-                                return enclosing_class_name + print_optional_template_arguments(ast);
-                        }
-                    }
+                    const enclosing_class_name = ast.scope?.[0]?.spelling;
+                    if (enclosing_class_name)
+                        return enclosing_class_name + print_optional_template_arguments(ast);
                     break;
                 }
                 case 'destructor': {
-                    if (ast.scope) {
-                        const enclosing_class_name_obj = ast.scope[0];
-                        if (enclosing_class_name_obj) {
-                            const enclosing_class_name = enclosing_class_name_obj.spelling;
-                            if (enclosing_class_name)
-                                return '~' + enclosing_class_name;
-                        }
-                    }
+                    const enclosing_class_name = ast.scope?.[0]?.spelling;
+                    if (enclosing_class_name)
+                        return '~' + enclosing_class_name;
                     break;
                 }
                 case 'dynamic initializer':
                 case 'dynamic atexit destructor':
                     if (ast.for.namekind === 'identifier') {
                         const forstr = ast.for.scope ? print_qualified_name(ast.for) : print_unqualified_name(ast.for);
-                        return `'${ast.specialname} for '${forstr}''`;
+                        return quoted(`${ast.specialname} for ${quoted(forstr)}`);
                     }
                     break;
             }
-            return `'${ast.specialname}'${print_optional_template_arguments(ast)}`;
+            return quoted(ast.specialname) + print_optional_template_arguments(ast);
         case 'internal':
         case 'rtti':
-            return `'${ast.nameinfo}'${print_optional_template_arguments(ast)}`;
+            return quoted(ast.nameinfo) + print_optional_template_arguments(ast);
     }
 }
 function print_scope(ast) {
     return [...ast].reverse().map((scope) => {
         if (typeof scope === 'bigint')
-            return `'${scope}'`;
+            return quoted(`${scope}`);
         else if (typeof scope === 'string')
-            return "'anonymous namespace'";
+            return quoted('anonymous namespace');
         else if (scope.kind)
             return `[${print_ast(scope)}]`;
         else
@@ -805,13 +789,13 @@ function print_template_argument(ast) {
         case 'entity':
             const addr = ast.argkind === 'entity' && !ast.argref ? '&' : '';
             if (ast.entity.namekind === 'string')
-                return "'string'";
+                return quoted('string');
             else if (ast.entity.namekind === 'template parameter object')
                 return addr + print_template_argument(ast.entity.value);
             return addr + print_qualified_name(ast.entity);
         case 'member object pointer':
         case 'member function pointer':
-            return `'${ast.argkind}'`;
+            return quoted(ast.argkind);
         case 'typed':
             const arg = ast.arg;
             if (arg.argkind === 'class' || arg.argkind === 'array' || arg.argkind === 'union')
@@ -832,7 +816,7 @@ function print_template_argument(ast) {
         case 'member':
             return print_template_argument(ast.object) + '.' + ast.member_name;
         case 'element':
-            return print_template_argument(ast.array) + '[' + ast.index + ']';
+            return print_template_argument(ast.array) + '[' + print_template_argument(ast.index) + ']';
         case 'address':
             return '&' + print_template_argument(ast.object);
         case 'pointer-to-member':
@@ -845,8 +829,8 @@ function print_template_argument(ast) {
             return print_qualified_name(ast.typename);
         case 'parameter':
             if (ast.parm_nesting > 1)
-                return `'T-${ast.parm_nesting}-${ast.parm_index}'`;
-            return `'T${ast.parm_index}'`;
+                return quoted(`T-${ast.parm_nesting}-${ast.parm_index}`);
+            return quoted(`T${ast.parm_index}`);
     }
 }
 function print_type(ast) {
@@ -890,7 +874,7 @@ function print_type(ast) {
 }
 function print_ast(ast) {
     if (ast.namekind === 'string')
-        return "'string'";
+        return quoted('string');
     if (ast.namekind === 'template parameter object')
         return print_template_argument(ast.value);
     const name = print_qualified_name(ast);

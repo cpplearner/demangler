@@ -776,6 +776,22 @@ f4<type18{type9{42}}>();
 // DEMANGLED: void f4<type18<type9>{type9{.mem2=42}}>()
 f4<type18{type9{.mem2=42}}>();
 
+union type19 { int a[2]; union { long b; }; };
+
+// MANGLED: ??$f4@$MTtype19@?1??f10@@YAXXZ@7T1?1??2@YAXXZ@a@3H06@0A@@@@@@YAXXZ
+// DEMANGLED: void f4<[void f10()]::'2'::type19{.a=(int[]){7, 0}}>()
+f4<type19{.a={7}}>();
+
+// MANGLED: ??$f4@$MTtype19@?1??f10@@YAXXZ@7T1?1??2@YAXXZ@<unnamed-tag>@7T<unnamed-tag>@1?1??2@YAXXZ@b@0?0@@@@YAXXZ
+// DEMANGLED: void f4<[void f10()]::'2'::type19{.<unnamed-tag>=[void f10()]::'2'::type19::<unnamed-tag>{.b=-1}}>()
+f4<type19{.b=-1}>();
+
+}
+
+void weird() {
+// MANGLED: ??$f4@$MPAY00HC61?var37@@3U?$type18@$$BY110H@@At@@61?var25@@3Ttype9@@Amem1@@@@@YAXXZ
+// DEMANGLED: void f4<(int (*)[1])&var37.t[&var25.mem1]>()
+f4<&var37.t[var25.mem1]>();
 }
 
 extern "C" {
