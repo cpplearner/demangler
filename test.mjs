@@ -84,6 +84,7 @@ async function get_all_testcases() {
         ["??$f@$MUA@@2U1@3$$BY100H3$$BY00H3H00@@@@@@@@@YAHXZ", "int f<A{(int[][1][1]){(int[][1]){(int[]){1}}}}>()"],
         ["??$g@$M$$CBUA@@1??__N2UA@@H0CK@@@$$Z$$CBU1@@@YAHABUA@@@Z", "int g<(const A)&A{(int)42}, const A>(const A &)"],
         ["??$g@$MPBUA@@1??__N2UA@@H0CK@@@$$Z$$CBU1@@@YAHABUA@@@Z", "int g<(const A *)&A{(int)42}, const A>(const A &)"],
+        ["??$f@$$W$RBAAB@@@9", "f<'T1'...>"]
     ];
     const testfiles = await readdir('tests').then(files => files.filter(name => name.endsWith('.cpp')));
 

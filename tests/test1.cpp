@@ -1,4 +1,4 @@
-// OPTIONS: /EHsc /std:c++latest /experimental:newLambdaProcessor
+// OPTIONS: /EHsc /std:c++latest
 struct type1 {
     void operator[](int);
     operator void();
@@ -260,6 +260,8 @@ private:
 // DEMANGLED: void 'eh vector copy constructor iterator'(void *, void *, unsigned int, unsigned int, void (*)(void *, void *), void (*)(void *))
 // MANGLED: ??__D@YGXPAX0IIP6EX00@ZP6EX0@Z@Z
 // DEMANGLED: void 'eh vector vbase copy constructor iterator'(void *, void *, unsigned int, unsigned int, void (*)(void *, void *), void (*)(void *))
+// MANGLED: ?$S1@?1??fn@@YAXXZ@4IA
+// DEMANGLED: unsigned int [void fn()]::'2'::$S1
 void fn() {
     delete[] new type2[1];
     delete[] new type5[1];
@@ -272,6 +274,7 @@ void fn() {
         int x{};
         [a2, x] {};
     }
+    thread_local type1 a3;
 }
 
 type2::~type2() {}
@@ -423,8 +426,8 @@ struct type8 {
     type7 b;
 };
 
-// MANGLED: ?$S1@@3ABUtype8@@B
-// DEMANGLED: const type8 & $S1
+// MANGLED: ?$S2@@3ABUtype8@@B
+// DEMANGLED: const type8 & $S2
 const auto & [s1, s2] = type8{};
 
 // MANGLED: ?f@type8@@QGAEXXZ
@@ -575,8 +578,8 @@ char32_t var33 = f2<void>();
 // DEMANGLED: wchar_t var34
 wchar_t var34;
 
-// MANGLED: ?$S2@@3HA
-// DEMANGLED: int $S2
+// MANGLED: ?$S3@@3HA
+// DEMANGLED: int $S3
 // MANGLED: ?var35@@3$$QAHA
 // DEMANGLED: int && var35
 int&& var35 = 0;
@@ -738,6 +741,10 @@ f4<type18{&type15::datamem2}>();
 // DEMANGLED: void f4<type18<int type17::*>{(int type17::*)'member object pointer'}>()
 f4<type18{&type17::datamem3}>();
 
+// MANGLED: ??$f4@$MU?$type18@PQtype1@@H@@2U1@PQtype1@@HN@@@YAXXZ
+// DEMANGLED: void f4<type18<int type1::*>{(int type1::*)nullptr}>()
+f4<type18<int type1::*>{nullptr}>();
+
 // TODO MANGLED: ??$f4@$MU?$type18@P8type15@@AEHXZ@@2U1@P8type15@@AEHXZ@@@YAXXZ
 f4<type18{&type15::memfn2}>();
 
@@ -797,6 +804,7 @@ f4<&var37.t[var25.mem1]>();
 extern "C" {
 inline const void* f11() {
     static const type1 var38;
+    static thread_local type1 var39;
     return &var38;
 }
 
@@ -806,13 +814,17 @@ inline const void* f11() {
 // DEMANGLED: const type1 [f11]::'2'::var38
 // MANGLED: ?$TSS0@?1??f11@@9@4HA
 // DEMANGLED: int [f11]::'2'::$TSS0
-auto var39 = &f11;
+// MANGLED: ?var39@?1??f11@@9@4Utype1@@A
+// DEMANGLED: type1 [f11]::'2'::var39
+// MANGLED: ??__J?1??f11@@9@51
+// DEMANGLED: [f11]::'2'::'local static thread guard'
+auto var40 = &f11;
 
 }
 
-// MANGLED: ?var40@@3PM0HM0
-// DEMANGLED: int * var40
-int __based(void)* var40;
-// MANGLED: ?var41@@3PN2var21@@HN21@
-// DEMANGLED: const int * var41
-const int __based(var21)* var41;
+// MANGLED: ?var41@@3PM0HM0
+// DEMANGLED: int * var41
+int __based(void)* var41;
+// MANGLED: ?var42@@3PN2var21@@HN21@
+// DEMANGLED: const int * var42
+const int __based(var21)* var42;

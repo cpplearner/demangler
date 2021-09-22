@@ -461,6 +461,7 @@ export class Demangler {
                 typekind: 'template argument', argkind: 'typed',
                 argtype: this.parse_type(), arg: this.parse_template_argument()
             }),
+            'N': () => ({ typekind: 'template argument', argkind: 'null member pointer' }),
             'Q': todo,
             'R': () => {
                 const num = this.parse_integer();
@@ -599,8 +600,9 @@ export class Demangler {
                     'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: this.parse_full_type() }),
                     'R': () => ({ typekind: 'reference', typename: '&&', cv: 'volatile', pointee_type: this.parse_full_type() }),
                     'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
+                    'U': () => ({ typekind: 'template argument', argkind: 'placeholder', associatedtype: this.parse_type() }),
                     'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
-                    'W': todo,
+                    'W': () => ({ typekind: 'template argument', argkind: 'pack expansion', associatedtype: this.parse_type() }),
                     'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
                     'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
                 }),
@@ -809,6 +811,8 @@ function print_template_argument(ast) {
             if (arg.argkind === 'empty non-type')
                 return '';
             return `(${print_type(ast.argtype).join('')})` + print_template_argument(arg);
+        case 'null member pointer':
+            return 'nullptr';
         case 'class':
             const members = ast.members.map(print_template_argument).join(', ');
             return print_type(ast.object_type).join('') + '{' + members + '}';
@@ -837,6 +841,10 @@ function print_template_argument(ast) {
             if (ast.parm_nesting > 1)
                 return quoted(`T-${ast.parm_nesting}-${ast.parm_index}`);
             return quoted(`T${ast.parm_index}`);
+        case 'placeholder':
+            return print_type(ast.associatedtype).join('');
+        case 'pack expansion':
+            return print_type(ast.associatedtype).join('') + '...';
     }
 }
 function print_type(ast) {
