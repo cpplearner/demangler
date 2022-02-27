@@ -1,5 +1,5 @@
-let error = () => { throw "error: cannot demangle"; };
-let todo = () => { throw "sorry: unimplemented demangling"; };
+let error = () => { throw Error("error: cannot demangle"); };
+let todo = () => { throw Error("sorry: unimplemented demangling"); };
 export class Demangler {
     input;
     index;
@@ -17,11 +17,11 @@ export class Demangler {
             const c = this.input[this.index];
             const call = (f) => {
                 if (this.index > this.input.length)
-                    throw `error: unexpected end of string when demangling ${context}\nsource string: ${this.dump()}`;
+                    throw Error(`error: unexpected end of string when demangling ${context}\nsource string: ${this.dump()}`);
                 else if (f === error)
-                    throw `error: cannot demangle ${context} that starts with '${prefix}${c}'\nsource string: ${this.dump()}`;
+                    throw Error(`error: cannot demangle ${context} that starts with '${prefix}${c}'\nsource string: ${this.dump()}`);
                 else if (f === todo)
-                    throw `sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${this.dump()}`;
+                    throw Error(`sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${this.dump()}`);
                 else
                     return f();
             };
@@ -86,7 +86,7 @@ export class Demangler {
         const name = this.parse_unqualified_name();
         const template_arguments = this.parse_list(() => this.parse_type());
         [this.names.active, this.types.active] = [names_prev_active, types_prev_active];
-        return this.remember_name({ ...name, template_arguments });
+        return { ...name, template_arguments };
     }
     remember_name(name) {
         this.names.stored[this.names.active].push(name);
@@ -115,8 +115,8 @@ export class Demangler {
     parse_scope() {
         return this.parse_list(() => this.parse("scope")({
             '?': () => this.parse("scope", '?')({
-                'A': () => this.parse_source_name(),
-                '$': () => this.parse_template_name(),
+                'A': () => this.remember_name({ namekind: 'anonymous', spelling: this.parse_source_name() }),
+                '$': () => this.remember_name(this.parse_template_name()),
                 '?': () => this.parse_mangled_after_question_mark(),
                 default: () => this.parse_integer(),
             }),
@@ -126,7 +126,7 @@ export class Demangler {
     parse_unqualified_name() {
         return this.parse("unqualified name")({
             '?': () => this.parse("unqualified name")({
-                '$': () => this.parse_template_name(),
+                '$': () => this.remember_name(this.parse_template_name()),
                 default: () => this.parse_special_name(),
             }),
             '0-9': (n) => this.names.stored[this.names.active][n],
@@ -314,11 +314,20 @@ export class Demangler {
             'H': () => ({ calling_convention: '__stdcall', saveregs: '__saveregs' }),
             'I': () => ({ calling_convention: '__fastcall' }),
             'J': () => ({ calling_convention: '__fastcall', saveregs: '__saveregs' }),
+            'K': error,
+            'L': error,
             'M': () => ({ calling_convention: '__clrcall' }),
+            'N': error,
             'O': () => ({ calling_convention: '__eabi' }),
+            'P': error,
             'Q': () => ({ calling_convention: '__vectorcall' }),
+            'R': error,
             'S': () => ({ calling_convention: '__swift_1' }),
+            'T': error,
             'U': () => ({ calling_convention: '__swift_2' }),
+            'V': error,
+            'W': () => ({ calling_convention: '__swift_3' }),
+            'X': error,
             'w': () => ({ calling_convention: '__regcall' }),
         });
     }
@@ -436,6 +445,7 @@ export class Demangler {
                     '@': () => ({ typekind: 'template argument', argkind: 'element', array, index }),
                 });
             },
+            'D': error,
             'E': () => ({ typekind: 'template argument', argkind: 'entity', argref: 'reference', entity: this.parse_mangled() }),
             'F': () => ({
                 typekind: 'template argument', argkind: 'member object pointer',
@@ -457,11 +467,15 @@ export class Demangler {
                 typekind: 'template argument', argkind: 'member function pointer', ...this.parse_optional_entity(),
                 nvoffset: this.parse_integer(), vbptroffset: this.parse_integer(), vbtableoffset: this.parse_integer(),
             }),
+            'K': error,
+            'L': error,
             'M': () => ({
                 typekind: 'template argument', argkind: 'typed',
                 argtype: this.parse_type(), arg: this.parse_template_argument()
             }),
             'N': () => ({ typekind: 'template argument', argkind: 'null member pointer' }),
+            'O': error,
+            'P': todo,
             'Q': todo,
             'R': () => {
                 const num = this.parse_integer();
@@ -599,10 +613,12 @@ export class Demangler {
                     'C': () => ({ ...this.parse_modifiers(), ...this.parse_type() }),
                     'Q': () => ({ typekind: 'reference', typename: '&&', pointee_type: this.parse_full_type() }),
                     'R': () => ({ typekind: 'reference', typename: '&&', cv: 'volatile', pointee_type: this.parse_full_type() }),
+                    'S': error,
                     'T': () => ({ typekind: 'builtin', typename: 'std::nullptr_t' }),
                     'U': () => ({ typekind: 'template argument', argkind: 'placeholder', associatedtype: this.parse_type() }),
                     'V': () => ({ typekind: 'template argument', argkind: 'empty type' }),
                     'W': () => ({ typekind: 'template argument', argkind: 'pack expansion', associatedtype: this.parse_type() }),
+                    'X': error,
                     'Y': () => ({ typekind: 'template argument', argkind: 'alias', typename: this.parse_qualified_name() }),
                     'Z': () => ({ typekind: 'template argument', argkind: 'pack separator' }),
                 }),
@@ -678,6 +694,7 @@ export class Demangler {
             '9': () => ({ kind: 'function' }),
             '_': todo,
             '$': () => this.parse("entity info", '$')({
+                'A': todo,
                 'B': () => ({ kind: 'thunk', callindex: this.parse_integer(), ...this.parse_vcall_thunk_info(), ...this.parse_calling_convention() }),
                 'R': () => ({
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
@@ -692,14 +709,11 @@ export class Demangler {
         });
     }
     parse_scope_and_info() {
-        const scope = this.parse_scope();
-        const info = this.parse_extra_info();
-        return { scope, ...info };
+        return { scope: this.parse_scope(), ...this.parse_extra_info() };
     }
     parse_mangled_after_question_mark() {
         return this.parse("mangled name")({
             '?': () => this.parse("mangled name")({
-                '$': () => ({ ...this.parse_template_name(), ...this.parse_scope_and_info() }),
                 '_': () => this.parse("mangled name")({
                     'C': () => this.parse("string literal", '?_C')({
                         '@': () => this.parse("string literal", '?_C@')({
@@ -712,6 +726,7 @@ export class Demangler {
                     }),
                     default: () => ({ ...this.parse_special_name_after_underscore(), ...this.parse_scope_and_info() }),
                 }),
+                '$': () => ({ ...this.parse_template_name(), ...this.parse_scope_and_info() }),
                 default: () => ({ ...this.parse_special_name(), ...this.parse_scope_and_info() }),
             }),
             default: () => ({ ...this.parse_unqualified_name(), ...this.parse_scope_and_info() }),
@@ -770,14 +785,14 @@ function print_unqualified_name(ast) {
         case 'internal':
         case 'rtti':
             return quoted(ast.nameinfo) + print_optional_template_arguments(ast);
+        case 'anonymous':
+            return quoted('anonymous namespace');
     }
 }
 function print_scope(ast) {
     return [...ast].reverse().map((scope) => {
         if (typeof scope === 'bigint')
             return quoted(`${scope}`);
-        else if (typeof scope === 'string')
-            return quoted('anonymous namespace');
         else if (scope.kind)
             return `[${print_ast(scope)}]`;
         else
@@ -869,8 +884,7 @@ function print_type(ast) {
             const typename = class_name ? print_qualified_name(class_name) + '::' + ast.typename : ast.typename;
             if (ast.pointee_type.typekind === 'array' || ast.pointee_type.typekind === 'function')
                 return [left + ' (' + filter_join('')([typename, ast.cv]), ')' + right];
-            else
-                return [filter_join(' ')([left, typename, ast.cv]), right];
+            return [filter_join(' ')([left, typename, ast.cv]), right];
         case 'array':
             const [elem_left, elem_right] = print_type(ast.element_type);
             const boundstr = ast.bounds.map(bound => `[${bound || ''}]`).join('');

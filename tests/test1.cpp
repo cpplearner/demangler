@@ -353,8 +353,7 @@ namespace ns1 {
 // DEMANGLED: void ns1::'dynamic atexit destructor for 'var2''()
 type1 var2;
 
-template<class T>
-type1 var3;
+template<class T> type1 var3;
 
 // MANGLED: ??$var3@X@ns1@@3Utype1@@A
 // DEMANGLED: type1 ns1::var3<void>
@@ -366,11 +365,11 @@ type1 var3;
 // DEMANGLED: void ns1::'dynamic atexit destructor for 'var3<void>''()
 const type1& var4 = var3<void>;
 }
+
 class type7 {
 public:
     static type1 var5;
-    template<class T>
-    static type1 var6;
+    template<class T> static type1 var6;
 };
 
 // MANGLED: ?var5@type7@@2Utype1@@A
@@ -388,8 +387,7 @@ type1 type7::var5;
 // MANGLED: ??__F??$var6@H@type7@@2Utype1@@A@type7@@YAXXZ
 // DEMANGLED: void type7::'dynamic atexit destructor for 'type7::var6<int>''()
 
-template<class T>
-type1 type7::var6;
+template<class T> type1 type7::var6;
 int x = (false ? type7::var6<int> -> ~type1() : void(), 1);
 
 // MANGLED: ??__K_a@@YAXPBD@Z
@@ -554,8 +552,7 @@ bool var30;
 
 // MANGLED: ??$f1@X@@YA?A_PXZ
 // DEMANGLED: auto f1<void>()
-template<class T>
-auto f1() {return u8' ';}
+template<class T> auto f1() {return u8' ';}
 
 // MANGLED: ?var31@@3_QA
 // DEMANGLED: char8_t var31
@@ -567,8 +564,7 @@ char16_t var32;
 
 // MANGLED: ??$f2@X@@YA?A_TXZ
 // DEMANGLED: decltype(auto) f2<void>()
-template<class T>
-decltype(auto) f2() {return U' ';}
+template<class T> decltype(auto) f2() {return U' ';}
 
 // MANGLED: ?var33@@3_UA
 // DEMANGLED: char32_t var33
@@ -588,17 +584,13 @@ int&& var35 = 0;
 // DEMANGLED: std::nullptr_t var36
 auto var36 = nullptr;
 
-template<class...>
-void f3() {}
+template<class...> void f3() {}
 
-template<auto...>
-void f4() {}
+template<auto...> void f4() {}
 
-template<int>
-void f5() {}
+template<int> void f5() {}
 
-template<auto& ref>
-void f6() {}
+template<auto& ref> void f6() {}
 
 template<auto v>
 void f7() {
@@ -606,14 +598,12 @@ void f7() {
     f6<v>();
 }
 
-template<float... Args>
-struct type12 {};
+template<float... Args> struct type12 {};
 
 template<float... Args, float... Args2>
 void f8(type12<Args...>, type12<Args2...>) {}
 
-template<template<float>class>
-void f9() {}
+template<template<float>class> void f9() {}
 
 template<float>
 using type13 = type12<1>;
@@ -828,3 +818,18 @@ int __based(void)* var41;
 // MANGLED: ?var42@@3PN2var21@@HN21@
 // DEMANGLED: const int * var42
 const int __based(var21)* var42;
+
+namespace ns1::ns2 {
+namespace {
+struct type20 {};
+void f12(type20) {}
+template<class T> void f13(T) {}
+}
+
+// MANGLED: ?f12@?A0xc2db2ee5@ns2@ns1@@YAXUtype20@123@@Z
+// DEMANGLED: void ns1::ns2::'anonymous namespace'::f12(ns1::ns2::'anonymous namespace'::type20)
+// MANGLED: ??$f13@Utype20@?A0xc2db2ee5@ns2@ns1@@@?A0xc2db2ee5@ns2@ns1@@YAXUtype20@012@@Z
+// DEMANGLED: void ns1::ns2::'anonymous namespace'::f13<ns1::ns2::'anonymous namespace'::type20>(ns1::ns2::'anonymous namespace'::type20)
+auto var43 = true ? f12 : f13<type20>;
+}
+
