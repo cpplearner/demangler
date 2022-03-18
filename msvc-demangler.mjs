@@ -584,7 +584,7 @@ export class Demangler {
                 'S': () => ({ typekind: 'builtin', typename: 'char16_t' }),
                 'T': () => ({ typekind: 'builtin', typename: 'decltype(auto)' }),
                 'U': () => ({ typekind: 'builtin', typename: 'char32_t' }),
-                'V': error,
+                'V': () => ({ typekind: 'this', object_parameter_type: this.parse_type() }),
                 'W': () => ({ typekind: 'builtin', typename: 'wchar_t' }),
                 'X': error,
                 'Y': error,
@@ -885,6 +885,9 @@ function print_type(ast) {
             if (ast.pointee_type.typekind === 'array' || ast.pointee_type.typekind === 'function')
                 return [left + ' (' + filter_join('')([typename, ast.cv]), ')' + right];
             return [filter_join(' ')([left, typename, ast.cv]), right];
+        case 'this':
+            const [objparamleft, objparamright] = print_type(ast.object_parameter_type);
+            return ['this ' + objparamleft, objparamright];
         case 'array':
             const [elem_left, elem_right] = print_type(ast.element_type);
             const boundstr = ast.bounds.map(bound => `[${bound || ''}]`).join('');

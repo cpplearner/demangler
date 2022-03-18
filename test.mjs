@@ -105,7 +105,7 @@ get_all_testcases().then(testcases => {
             process.exitCode = 1;
             console.error(`Fail: Exception thrown when demangling "${mangled}".`);
             console.error(`\tExpected: "${expected}"`);
-            console.error(`\tMessage: """\n${e.message}\n"""`);
+            console.error(`\tMessage:\n"""\n${e.message}\n"""`);
         }
     });
 });

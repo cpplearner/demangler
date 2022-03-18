@@ -833,3 +833,10 @@ template<class T> void f13(T) {}
 auto var43 = true ? f12 : f13<type20>;
 }
 
+struct type21 {
+    void f14(this auto) {}
+};
+
+// MANGLED: ??$f14@Utype21@@@type21@@SAX_VU0@@Z
+// DEMANGLED: void type21::f14<type21>(this type21)
+template void type21::f14(this type21);
