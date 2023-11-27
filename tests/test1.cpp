@@ -735,10 +735,12 @@ f4<type18{&type17::datamem3}>();
 // DEMANGLED: void f4<type18<int type1::*>{(int type1::*)nullptr}>()
 f4<type18<int type1::*>{nullptr}>();
 
-// TODO MANGLED: ??$f4@$MU?$type18@P8type15@@AEHXZ@@2U1@P8type15@@AEHXZ@@@YAXXZ
+// MANGLED: ??$f4@$MU?$type18@P8type15@@AEHXZ@@2U1@P8type15@@AEHXZE??_92@$BA@AE@@@YAXXZ
+// DEMANGLED: void f4<type18<int (type15::*)()>{(int (type15::*)())type15::'vcall'}>()
 f4<type18{&type15::memfn2}>();
 
-// TODO MANGLED: ??$f4@$MU?$type18@P8type17@@AEHXZ@@2U1@P8type17@@AEHXZ@@@YAXXZ
+// MANGLED: ??$f4@$MU?$type18@P8type17@@AEHXZ@@2U1@P8type17@@AEHXZE?memfn4@2@QAEHXZ@@@YAXXZ
+// DEMANGLED: void f4<type18<int (type17::*)()>{(int (type17::*)())type17::memfn4}>()
 f4<type18{&type17::memfn4}>();
 
 // MANGLED: ??$f4@$MU?$type18@$$BY110H@@2U1@3$$BY00H3H00@@@3H0A@@@@@@@@YAXXZ
