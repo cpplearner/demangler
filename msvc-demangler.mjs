@@ -1,27 +1,26 @@
 let error = () => { throw Error("error: cannot demangle"); };
 let todo = () => { throw Error("sorry: unimplemented demangling"); };
 export class Demangler {
-    input;
-    index;
-    names = { stored: [[]], active: 0 };
-    types = { stored: [[]], active: 0 };
     constructor(input, index = 0) {
         this.input = input;
         this.index = index;
+        this.names = { stored: [[]], active: 0 };
+        this.types = { stored: [[]], active: 0 };
     }
-    dump() {
-        return `${this.input.slice(0, this.index)} | ${this.input[this.index]} | ${this.input.slice(this.index + 1)}`;
+    dump(index = this.index) {
+        return `${this.input.slice(0, index)} | ${this.input[index]} | ${this.input.slice(index + 1)}`;
     }
     parse(context, prefix = '') {
         return (map) => {
-            const c = this.input[this.index];
+            const index = this.index;
+            const c = this.input[index];
             const call = (f) => {
-                if (this.index > this.input.length)
-                    throw Error(`error: unexpected end of string when demangling ${context}\nsource string: ${this.dump()}`);
+                if (c === undefined)
+                    throw Error(`error: unexpected end of string when demangling ${context}\nsource string: ${this.dump(index)}`);
                 else if (f === error)
-                    throw Error(`error: cannot demangle ${context} that starts with '${prefix}${c}'\nsource string: ${this.dump()}`);
+                    throw Error(`error: cannot demangle ${context} that starts with '${prefix}${c}'\nsource string: ${this.dump(index)}`);
                 else if (f === todo)
-                    throw Error(`sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${this.dump()}`);
+                    throw Error(`sorry: unimplemented ${context} demangling of '${prefix}${c}'\nsource string: ${this.dump(index)}`);
                 else
                     return f();
             };
@@ -411,10 +410,7 @@ export class Demangler {
             '2': () => this.parse_class_non_type_template_argument(),
             '3': () => this.parse_array_member(),
             '7': () => this.parse_union_non_type_template_argument(),
-            default: () => ({
-                typekind: 'template argument', argkind: 'typed',
-                argtype: this.parse_type(), arg: this.parse_template_argument()
-            }),
+            default: () => ({ typekind: 'template argument', argkind: 'typed', argtype: this.parse_type(), arg: this.parse_template_argument() }),
         }));
         return { typekind: 'template argument', argkind: 'class', object_type, members };
     }
@@ -469,10 +465,7 @@ export class Demangler {
             }),
             'K': error,
             'L': error,
-            'M': () => ({
-                typekind: 'template argument', argkind: 'typed',
-                argtype: this.parse_type(), arg: this.parse_template_argument()
-            }),
+            'M': () => ({ typekind: 'template argument', argkind: 'typed', argtype: this.parse_type(), arg: this.parse_template_argument() }),
             'N': () => ({ typekind: 'template argument', argkind: 'null member pointer' }),
             'O': error,
             'P': todo,
@@ -482,10 +475,7 @@ export class Demangler {
                 const parm_index = num & ~(-1n << 12n);
                 const parm_nesting = (num >> 12n) & ~(-1n << 8n);
                 const parm_cumulative_parent_number = (num >> 20n) & ~(-1n << 10n);
-                return {
-                    typekind: 'template argument', argkind: 'parameter',
-                    parm_index, parm_nesting, parm_cumulative_parent_number
-                };
+                return { typekind: 'template argument', argkind: 'parameter', parm_index, parm_nesting, parm_cumulative_parent_number };
             },
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
             'T': todo,
@@ -584,7 +574,7 @@ export class Demangler {
                 'S': () => ({ typekind: 'builtin', typename: 'char16_t' }),
                 'T': () => ({ typekind: 'builtin', typename: 'decltype(auto)' }),
                 'U': () => ({ typekind: 'builtin', typename: 'char32_t' }),
-                'V': () => ({ typekind: 'this', object_parameter_type: this.parse_type() }),
+                'V': () => ({ typekind: 'object parameter', this_type: this.parse_type() }),
                 'W': () => ({ typekind: 'builtin', typename: 'wchar_t' }),
                 'X': error,
                 'Y': error,
@@ -700,6 +690,9 @@ export class Demangler {
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
                     vbptrdisp: this.parse_integer(), vbindex: this.parse_integer(),
                     vtordisp: this.parse_integer(), adjustment: this.parse_integer(), ...this.parse_member_function_type()
+                }),
+                '$': () => this.parse("entity info", '$$')({
+                    'h': () => ({ target: 'ARM64EC', ...this.parse_extra_info() }),
                 }),
                 default: () => ({
                     kind: 'thunk', ...this.parse_vtordisp_kind(),
@@ -885,8 +878,8 @@ function print_type(ast) {
             if (ast.pointee_type.typekind === 'array' || ast.pointee_type.typekind === 'function')
                 return [left + ' (' + filter_join('')([typename, ast.cv]), ')' + right];
             return [filter_join(' ')([left, typename, ast.cv]), right];
-        case 'this':
-            const [objparamleft, objparamright] = print_type(ast.object_parameter_type);
+        case 'object parameter':
+            const [objparamleft, objparamright] = print_type(ast.this_type);
             return ['this ' + objparamleft, objparamright];
         case 'array':
             const [elem_left, elem_right] = print_type(ast.element_type);
