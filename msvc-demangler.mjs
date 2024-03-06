@@ -420,6 +420,13 @@ export class Demangler {
             default: () => ({}),
         });
     }
+    parse_template_parameter_index() {
+        const num = this.parse_integer();
+        const parm_index = num & ~(-1n << 12n);
+        const parm_nesting = (num >> 12n) & ~(-1n << 8n);
+        const parm_cumulative_parent_number = (num >> 20n) & ~(-1n << 10n);
+        return { parm_index, parm_nesting, parm_cumulative_parent_number };
+    }
     parse_template_argument() {
         return this.parse("non-type template argument")({
             'A': () => {
@@ -470,15 +477,9 @@ export class Demangler {
             'O': error,
             'P': todo,
             'Q': todo,
-            'R': () => {
-                const num = this.parse_integer();
-                const parm_index = num & ~(-1n << 12n);
-                const parm_nesting = (num >> 12n) & ~(-1n << 8n);
-                const parm_cumulative_parent_number = (num >> 20n) & ~(-1n << 10n);
-                return { typekind: 'template argument', argkind: 'parameter', parm_index, parm_nesting, parm_cumulative_parent_number };
-            },
+            'R': () => ({ typekind: 'template argument', argkind: 'parameter', ...this.parse_template_parameter_index() }),
             'S': () => ({ typekind: 'template argument', argkind: 'empty non-type' }),
-            'T': todo,
+            'T': () => ({ typekind: 'template argument', argkind: 'parameter pack', ...this.parse_template_parameter_index() }),
             '0': () => ({ typekind: 'template argument', argkind: 'integral', value: this.parse_integer() }),
             '1': () => ({ typekind: 'template argument', argkind: 'entity', entity: this.parse_mangled() }),
             '2': () => this.parse_class_non_type_template_argument(),
@@ -846,6 +847,7 @@ function print_template_argument(ast) {
         case 'alias':
             return print_qualified_name(ast.typename);
         case 'parameter':
+        case 'parameter pack':
             if (ast.parm_nesting > 1)
                 return quoted(`T-${ast.parm_nesting}-${ast.parm_index}`);
             return quoted(`T${ast.parm_index}`);
