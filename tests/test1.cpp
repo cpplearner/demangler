@@ -388,7 +388,7 @@ type1 type7::var5;
 // DEMANGLED: void type7::'dynamic atexit destructor for 'type7::var6<int>''()
 
 template<class T> type1 type7::var6;
-int x = (false ? type7::var6<int> -> ~type1() : void(), 1);
+int x = (false ? ++type7::var6<int> : void(), 1);
 
 // MANGLED: ??__K_a@@YAXPBD@Z
 // DEMANGLED: void operator""_a(const char *)

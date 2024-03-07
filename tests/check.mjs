@@ -32,7 +32,7 @@ async function read_input(filename) {
 async function test(filename, outname) {
     const { options, mangled, demangled } = await read_input(filename);
 
-    const ls = spawn('cl', [...options, '/nologo', '/Fa'+outname, '/c', '/FoNUL', filename]);
+    const ls = spawn('cl.exe', [...options, '/nologo', '/Fa'+outname, '/c', '/FoNUL', filename]);
 
     let stdout = '';
 
@@ -77,3 +77,4 @@ async function test(filename, outname) {
 test('test1.cpp', 'test1.asm');
 test('test2.cpp', 'test2.asm');
 test('test3.cpp', 'test3.asm');
+test('test4.cpp', 'test4.asm');

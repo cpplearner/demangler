@@ -32,7 +32,7 @@ export class Demangler {
                 this.index++;
                 return map['0-9'](+c);
             }
-            return call(map.default || error);
+            return call(map['default'] || error);
         };
     }
     parse_list(f) {
@@ -277,6 +277,28 @@ export class Demangler {
     }
     parse_modifiers() {
         const optional_modifiers = this.parse_optional_modifiers();
+        const cli_type = this.parse("cli type")({
+            '$': () => this.parse("cli type", '$')({
+                'A': () => ({ cli_type: '^' }),
+                'B': () => ({ cli_type: 'pin_ptr' }),
+                'C': () => ({ cli_type: '%' }),
+                default: () => {
+                    const dimension = this.input.slice(this.index, this.index + 2);
+                    const rank = +('0x' + dimension);
+                    if (rank > 0 && rank <= 32) {
+                        this.index += 2;
+                        return this.parse("cli type", '$' + dimension)({
+                            '$': () => ({ cli_type: 'array', cli_array_rank: rank }),
+                            default: () => ({ cli_type: 'array^', cli_array_rank: rank }),
+                        });
+                    }
+                    return this.parse("cli type")({
+                        default: error,
+                    });
+                },
+            }),
+            default: () => ({}),
+        });
         const modifiers = this.parse("type qualifier")({
             'A': () => ({}),
             'B': () => ({ cv: 'const' }),
@@ -296,7 +318,7 @@ export class Demangler {
             'P': () => ({ cv: 'const volatile', based: this.parse_based_modifier() }),
             default: error,
         });
-        return { ...optional_modifiers, ...modifiers };
+        return { ...optional_modifiers, ...cli_type, ...modifiers };
     }
     parse_member_function_type() {
         return { ...this.parse_modifiers(), ...this.parse_function_type() };
@@ -336,7 +358,7 @@ export class Demangler {
             '@': () => ({}),
             default: () => ({ return_type: this.parse_type() }),
         });
-        const { params, variadic } = this.parse("function parameter list")({
+        const param_list = this.parse("function parameter list")({
             'X': () => ({ params: [] }),
             default: () => this.parse_parameter_list(),
         });
@@ -346,7 +368,7 @@ export class Demangler {
                 'E': () => ({ noexcept: 'noexcept' }),
             })
         });
-        return { typekind: 'function', ...cc, ...return_type, params, variadic, ...except };
+        return { typekind: 'function', ...cc, ...return_type, ...param_list, ...except };
     }
     parse_array_type() {
         const dimension = this.parse_integer();
@@ -592,6 +614,7 @@ export class Demangler {
                 '9': error,
                 '_': () => this.parse('type', '__')({
                     'R': () => ({ typekind: 'builtin', typename: 'unknown-type' }),
+                    'Z': () => ({ cli_typekind: 'value class', ...this.parse_type() }),
                 }),
                 '$': todo,
             }),
@@ -693,6 +716,11 @@ export class Demangler {
                     vtordisp: this.parse_integer(), adjustment: this.parse_integer(), ...this.parse_member_function_type()
                 }),
                 '$': () => this.parse("entity info", '$$')({
+                    'F': () => ({ cli_kind: 'C++ managed-IL function', ...this.parse_extra_info() }),
+                    'H': () => ({ cli_kind: 'C++ managed-IL main', ...this.parse_extra_info() }),
+                    'J': () => this.parse("entity info", '$$J')({
+                        '0': () => ({ cli_kind: 'C managed-IL function', ...this.parse_extra_info() }),
+                    }),
                     'h': () => ({ target: 'ARM64EC', ...this.parse_extra_info() }),
                 }),
                 default: () => ({
@@ -875,6 +903,25 @@ function print_type(ast) {
         case 'pointer':
         case 'reference':
             const [left, right] = print_type(ast.pointee_type);
+            if (ast.pointee_type.cli_type) {
+                switch (ast.pointee_type.cli_type) {
+                    case 'pin_ptr':
+                        return [filter_join(' ')([ast.cv, `cli::pin_ptr<${left + right}>`]), ''];
+                    case 'array^':
+                    case 'array':
+                        const rank = ast.pointee_type.cli_array_rank;
+                        const args = filter_join(', ')([left + right, rank === 1 ? '' : '' + rank]);
+                        if (ast.pointee_type.cli_type == 'array^') {
+                            return [filter_join(' ')([ast.cv, `cli::array<${args}>^`]), ''];
+                        }
+                        else {
+                            return [filter_join(' ')([ast.cv, `cli::array<${args}>`]), ''];
+                        }
+                    case '^':
+                    case '%':
+                        return [filter_join(' ')([left, ast.pointee_type.cli_type, ast.cv]), right];
+                }
+            }
             const class_name = ast.pointee_type.class_name;
             const typename = class_name ? print_qualified_name(class_name) + '::' + ast.typename : ast.typename;
             if (ast.pointee_type.typekind === 'array' || ast.pointee_type.typekind === 'function')
