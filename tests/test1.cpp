@@ -574,8 +574,8 @@ char32_t var33 = f2<void>();
 // DEMANGLED: wchar_t var34
 wchar_t var34;
 
-// MANGLED: ?$S3@@3HA
-// DEMANGLED: int $S3
+// MANGLED: ?$S4@@3HA
+// DEMANGLED: int $S4
 // MANGLED: ?var35@@3$$QAHA
 // DEMANGLED: int && var35
 int&& var35 = 0;
@@ -699,8 +699,8 @@ f9<type13>();
 // DEMANGLED: void f4<(int type14::*)0, (int type14::*)-1>()
 f4<&type14::datamem1, decltype(&type14::datamem1){nullptr}>();
 
-// MANGLED: ??$f4@$MPQtype15@@H03$MPQ1@H0A@@@YAXXZ
-// DEMANGLED: void f4<(int type15::*)4, (int type15::*)0>()
+// MANGLED: ??$f4@$MPQtype15@@H03$MPQ1@H0?0@@YAXXZ
+// DEMANGLED: void f4<(int type15::*)4, (int type15::*)-1>()
 f4<&type15::datamem2, decltype(&type15::datamem2){nullptr}>();
 
 // MANGLED: ??$f4@$MPQtype17@@HF3A@$MPQ1@HFA@?0@@YAXXZ
@@ -842,3 +842,30 @@ struct type21 {
 // MANGLED: ??$f14@Utype21@@@type21@@SAX_VU0@@Z
 // DEMANGLED: void type21::f14<type21>(this type21)
 template void type21::f14(this type21);
+
+namespace std {
+    using size_t = decltype(sizeof 0);
+
+    template<class T>
+    struct tuple_size {};
+
+    template<size_t I, class T>
+    struct tuple_element {};
+}
+
+struct type22 {
+    int mem1;
+
+    template<int I>
+    int& get() { return mem1; }
+};
+
+template<>
+struct std::tuple_size<type22> { static constexpr auto value = 1; };
+
+template<>
+struct std::tuple_element<0, type22> { using type = int; };
+
+// MANGLED: ?s3@@;AAHA
+// DEMANGLED: int & s3
+auto&& [s3] = type22{};
