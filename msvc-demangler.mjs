@@ -706,6 +706,7 @@ export class Demangler {
             '7': () => ({ kind: 'special', ...this.parse_modifiers(), ...this.parse_vtable_base() }),
             '8': () => ({ kind: 'special' }),
             '9': () => ({ kind: 'function' }),
+            ';': () => ({ kind: 'structured binding', ...this.parse_type(), varqual: this.parse_modifiers() }),
             '_': todo,
             '$': () => this.parse("entity info", '$')({
                 'A': todo,
