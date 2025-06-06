@@ -63,9 +63,10 @@ export class Demangler {
         return sign * value;
     }
     parse_string_literal_name() {
-        const wide = this.parse("string literal width")({
-            '0': () => ({}),
-            '1': () => ({ wide: 'wide' }),
+        const stringkind = this.parse("string literal kind")({
+            '0': () => ({ stringkind: 'narrow' }),
+            '1': () => ({ stringkind: 'wide' }),
+            '2': () => ({ stringkind: 'UTF-32' }),
         });
         const length = this.parse_integer();
         const crc = this.parse_source_name();
@@ -76,7 +77,7 @@ export class Demangler {
         str = str.replace(/\?[A-Z]/g, (m) => `\\x${hex(ord_diff(m[1], 'A') + 0xC1)}`);
         str = str.replace(/\?[0-9]/g, (m) => ",/\\:. \n\t'-"[ord_diff(m[1], '0')]);
         str = str.replace(/\?\$(..)/g, (m, p) => `\\x${p.replace(/./g, (s) => hex(ord_diff(s, 'A')))}`);
-        return { namekind: 'string', ...wide, length, crc, content: str };
+        return { namekind: 'string', ...stringkind, length, crc, content: str };
     }
     parse_template_name() {
         const [names_prev_active, types_prev_active] = [this.names.active, this.types.active];
